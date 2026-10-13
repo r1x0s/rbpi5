@@ -126,16 +126,16 @@ in the order the prompt named; the table uses the performed order.
 |---|---|---|
 | Beat FX knob (effect select) | **one note per position, 32–45 (0x20–0x2D): 14 positions** as it was turned | **differs** (FLX4: an FX SELECT button stepping one note, 99, + SHIFT 100) |
 | BEAT < / BEAT > | note 74 / 75 (0x4A / 0x4B) | same |
-| **FX channel select buttons** (six; the FLX4 has a CH SELECT lever) | **one note per button, all on ch 4**: left to right **16, 20, 17, 18, 19, 22** (0x10, 0x14, 0x11, 0x12, 0x13, 0x16) | **differs** (FLX4: 16 on ch 4 and 17 on ch 5, two legs) |
+| **FX channel select buttons** (six; the FLX4 has a CH SELECT lever) | **one note per button, all on ch 4**: **1 = 16, 2 = 17, 3 = 18, 4 = 19, MST = 20, SP = 22** (0x10–0x13, 0x14, 0x16). A **radio group**: pressing a button sends Note On for it and **Note Off for the previously selected one** | **differs** (FLX4: 16 on ch 4 and 17 on ch 5, two legs) |
 | LEVEL/DEPTH | CC 2 / 34 | same |
 | FX ON/OFF | note 71 (0x47) | same note (FLX4 sends it on one leg per target channel) |
 
-**FX channel select buttons.** Printed labels (owner, 2026-10-13): **1, 2, 3, 4,
-SP, MST**, two per row in three rows. Which note belongs to which label is **not
-yet measured**: the capture pressed them "left to right", which is ambiguous on a
-2 × 3 grid. By the FLX4's numbering (16 = CH1, 17 = CH2, 20 = MASTER) the expected
-reading is 1 = 16, 2 = 17, 3 = 18, 4 = 19, MST = 20, SP = 22; a capture pressing
-them in label order settles it.
+**FX channel select buttons.** Printed labels **1, 2, 3, 4, SP, MST**, two per row
+in three rows. Measured by a second capture pressing them in label order
+(2026-10-13): `On 16 / Off 20`, `On 17 / Off 16`, `On 18 / Off 17`, `On 19 / Off 18`,
+`On 22 / Off 19`, `On 20 / Off 22`. So the numbering is the FLX4's (16 = CH1,
+17 = CH2, 20 = MASTER), and the Note Off is a **deselect** of the previous button,
+not a release: a map must act on Note On only.
 
 **Beat FX knob.** One note per click, strictly in order: the sweep went 33 → 45
 turning right and 45 → 32 turning back. With the effect names printed left to
@@ -173,8 +173,8 @@ effect. What the three leftovers do is a map decision.
 
 Printed pad modes (owner, 2026-10-13): **HOT CUE (27), STEMS (30), BEAT JUMP (32),
 SAMPLER (34)**; with SHIFT: **KEYBOARD, PAD FX, BEAT LOOP, KEY SHIFT** (on the same
-four buttons, in that order; their notes are not captured yet; the FLX4's
-SHIFT + mode notes are 105/107/109/111). rbp has four pad modes: HOT CUE,
+four buttons, in that order: **105, 107, 109, 111** on the deck channel, measured
+with SHIFT held: the FLX4's SHIFT + mode notes exactly). rbp has four pad modes: HOT CUE,
 AUTO BEAT LOOP, SLIP BEAT LOOP, BEAT JUMP (docs/15). By name, HOT CUE, BEAT JUMP and
 BEAT LOOP have rbp equivalents; STEMS, SAMPLER, KEYBOARD, PAD FX and KEY SHIFT do
 not.
@@ -188,5 +188,3 @@ not.
   the faders and CH3 CUE; SHIFT variants of most deck controls.
 * Whether BEAT SYNC is sent on press or on release (the capture has both events
   but no timestamps).
-* Which note is which FX channel select button (labels known, pairing not), and
-  the SHIFT + pad-mode notes.
