@@ -153,6 +153,8 @@ rbp_key.o: rbp_key.c rbp_key.h rbp_abi.h syscalls.h
 #   ctrl_map.o   the binding tables every map fills, and their invalidation
 #   map_flx4.o   the DDJ-FLX4 surface: the target's own tables (unverified --
 #                from Pioneer's published MIDI list, see the file's header)
+#   map_grv6.o   the DDJ-GRV6 surface: this fork's target, measured from the unit
+#                (docs/19-grv6-midi.md); no LED table yet
 #   map_jp21.o   the SC Live 4 / Prime GO surface: its notes, CCs and timing
 #   map_kbd.o    the keyboard fallback: evdev keycodes, no controller, no MIDI
 #   evdev_io.o   the non-MIDI event source (/dev/input/event*), which knows no
@@ -199,7 +201,7 @@ rbp_key.o: rbp_key.c rbp_key.h rbp_abi.h syscalls.h
 # (annotated in the sources), and shmstate.o's globals, which the audio shim
 # reads out of the global scope. (rbp_key.o is the third object outside this
 # list; it is hidden too, and says why in its own rule above.)
-CTRL_OBJS  := ctrlshim.o ctrl_map.o map_flx4.o map_jp21.o map_kbd.o evdev_io.o \
+CTRL_OBJS  := ctrlshim.o ctrl_map.o map_flx4.o map_grv6.o map_jp21.o map_kbd.o evdev_io.o \
               mididump.o rbp_bridge.o rbp_led.o led_table.o plinn_scan.o \
               rbp_vu.o midi_io.o controllers.o shimutil.o usb_label.o
 CTRL_HDRS  := rbp_abi.h rbp_bridge.h rbp_key.h rbp_led.h led_table.h rbp_vu.h \
@@ -643,7 +645,7 @@ pcmprobe: ../../tools/pcmprobe.c
 # pins the glyph and stops exactly where the device begins. The production
 # fb_cursor.o is linked and the kernel is scripted, so what is pinned is the retry
 # and the rectangle -- see that file's header.
-TESTS := test_point test_audio test_midi test_flx4 test_kbd test_cursor \
+TESTS := test_point test_audio test_midi test_flx4 test_grv6 test_kbd test_cursor \
          test_evdev test_cursor_dev test_menu test_side test_window test_keyboard \
          test_menu_dev test_util test_wave test_prompt test_fx test_hc test_fxpad \
          test_led_table test_plinn_scan test_controllers test_usblabel test_netalias
@@ -934,6 +936,25 @@ test_flx4.o: FORCE test_flx4.c ctrl_map.h mididump.h shmstate.h rbp_abi.h \
 	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
 	    -Wall -Wextra -c -o $@ test_flx4.c \
 	    -DFLX4_FIXTURE='"$(CURDIR)/tests/midi_flx4.dump"'
+
+# test_grv6 is test_flx4's discipline against the GRV6 map: the production map,
+# binding tables and dump format, over a fixture whose numbers were measured on
+# the unit (docs/19-grv6-midi.md). It needs no map_jp21.o -- the GRV6 has no LED
+# table to compare -- and drives the jog with real sleeps, because the map
+# measures the jog's speed against the clock (about 0.5 s of the run).
+GRV6_TEST_OBJS := test_grv6.o map_grv6.o ctrl_map.o mididump.o shimutil.o \
+                  shmstate.o
+
+test_grv6: $(GRV6_TEST_OBJS) tests/midi_grv6.dump
+	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
+	    -Wall -Wextra -static -o $@ $(GRV6_TEST_OBJS) -lpthread -lm -lc
+
+# FORCE, for the same reason as test_flx4.o: GRV6_FIXTURE bakes $(CURDIR).
+test_grv6.o: FORCE test_grv6.c ctrl_map.h mididump.h shmstate.h rbp_abi.h \
+             rbp_bridge.h rbp_vu.h
+	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
+	    -Wall -Wextra -c -o $@ test_grv6.c \
+	    -DGRV6_FIXTURE='"$(CURDIR)/tests/midi_grv6.dump"'
 
 # test_kbd links the PRODUCTION map (map_kbd.o) and the production binding
 # tables (ctrl_map.o), for the same reason test_midi does: the test must be

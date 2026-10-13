@@ -348,6 +348,10 @@ extern const struct ctrl_map map_kbd;
  * unit confirms them -- see the provenance block in map_flx4.c and docs/15. */
 extern const struct ctrl_map map_flx4;
 
+/* The AlphaTheta DDJ-GRV6, this fork's target. Its tables are MEASURED from the
+ * unit (docs/19-grv6-midi.md); its LEDs are not, so it declares no LED table. */
+extern const struct ctrl_map map_grv6;
+
 /* The selected MIDI surface's LED table, or NULL if it has none to drive. Defined
  * in ctrlshim.c because that is the only file that knows the selection, and asked
  * of the MIDI side alone: the LED panel belongs to the controller, so lighting

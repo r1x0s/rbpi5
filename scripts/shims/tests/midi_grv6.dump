@@ -1,0 +1,231 @@
+# rbpi4b midi dump v1 -- t is seconds since the first event
+#
+# A HAND-ASSEMBLED fixture for map_grv6.c. Unlike midi_flx4.dump, every channel,
+# note, CC and value shape below was MEASURED on the unit -- the 2026-10-13
+# capture written up in docs/19-grv6-midi.md -- except the lines marked
+# "expected", which stand for controls the capture did not reach. The ORDER and
+# the timestamps are not a recording: the lines are arranged so that each row of
+# test_grv6.c's expectation table comes from exactly one line here, and a line
+# expected to produce NOTHING sits between two that do, so a spurious keycode
+# shifts the whole table.
+#
+# Not here: the jog (its speed is measured against real time, so test_grv6.c
+# drives it directly with real sleeps), and grv6_startup() (it writes two
+# absolute rbp addresses, which are a segfault off the device -- see
+# midi_flx4.dump's header).
+#
+# The System Reset the unit sends when a side switches to deck 3/4 is recorded
+# the way MIDI_DUMP records any type the format cannot replay: as a SKIP line.
+0.000000 SKIP type=41
+
+# ---- deck 1 (ch 0) ----
+0.001000 NOTEON ch=0 note=11 vel=127
+0.002000 NOTEOFF ch=0 note=11 vel=0
+0.003000 NOTEON ch=0 note=12 vel=127
+0.004000 NOTEOFF ch=0 note=12 vel=0
+# BEAT SYNC: one gesture, sent on the first edge; the release is swallowed
+0.005000 NOTEON ch=0 note=88 vel=127
+0.006000 NOTEOFF ch=0 note=88 vel=0
+# SHIFT, then SHIFT + PLAY (71): both produce nothing
+0.007000 NOTEON ch=0 note=63 vel=127
+0.008000 NOTEON ch=0 note=71 vel=127
+0.009000 NOTEOFF ch=0 note=71 vel=0
+0.010000 NOTEOFF ch=0 note=63 vel=0
+# MASTER TEMPO -> key lock
+0.011000 NOTEON ch=0 note=26 vel=127
+0.012000 NOTEOFF ch=0 note=26 vel=0
+# KEY SYNC, MEMORY, CUE/LOOP CALL < and >: log-only
+0.013000 NOTEON ch=0 note=101 vel=127
+0.014000 NOTEOFF ch=0 note=101 vel=0
+0.015000 NOTEON ch=0 note=61 vel=127
+0.016000 NOTEOFF ch=0 note=61 vel=0
+0.017000 NOTEON ch=0 note=81 vel=127
+0.018000 NOTEOFF ch=0 note=81 vel=0
+0.019000 NOTEON ch=0 note=83 vel=127
+0.020000 NOTEOFF ch=0 note=83 vel=0
+# loop IN, OUT, 4 BEAT / EXIT
+0.021000 NOTEON ch=0 note=16 vel=127
+0.022000 NOTEOFF ch=0 note=16 vel=0
+0.023000 NOTEON ch=0 note=17 vel=127
+0.024000 NOTEOFF ch=0 note=17 vel=0
+0.025000 NOTEON ch=0 note=77 vel=127
+0.026000 NOTEOFF ch=0 note=77 vel=0
+# jog touch
+0.027000 NOTEON ch=0 note=54 vel=127
+0.028000 NOTEOFF ch=0 note=54 vel=0
+# channel CUE twice: the latch goes on, then off (no keycode either time)
+0.029000 NOTEON ch=0 note=84 vel=127
+0.030000 NOTEOFF ch=0 note=84 vel=0
+0.031000 NOTEON ch=0 note=84 vel=127
+0.032000 NOTEOFF ch=0 note=84 vel=0
+
+# ---- deck 2 (ch 1): PLAY measured, channel CUE expected ----
+0.033000 NOTEON ch=1 note=11 vel=127
+0.034000 NOTEOFF ch=1 note=11 vel=0
+0.035000 NOTEON ch=1 note=84 vel=127
+0.036000 NOTEOFF ch=1 note=84 vel=0
+
+# ---- the left side switches to deck 3 and back: nothing reaches rbp ----
+# (block [23] of the capture, in its order)
+0.037000 NOTEON ch=2 note=114 vel=127
+0.038000 NOTEOFF ch=2 note=114 vel=0
+0.039000 NOTEON ch=2 note=60 vel=127
+0.040000 NOTEOFF ch=0 note=60 vel=0
+0.041000 CONTROLLER ch=2 cc=0 val=64
+0.042000 CONTROLLER ch=2 cc=32 val=0
+0.043000 SKIP type=41
+0.044000 NOTEON ch=2 note=11 vel=127
+0.045000 NOTEOFF ch=2 note=11 vel=0
+0.046000 CONTROLLER ch=2 cc=19 val=100
+0.047000 CONTROLLER ch=2 cc=34 val=66
+0.048000 NOTEON ch=0 note=114 vel=127
+0.049000 NOTEOFF ch=0 note=114 vel=0
+0.050000 NOTEON ch=0 note=60 vel=127
+0.051000 NOTEOFF ch=2 note=60 vel=0
+
+# ---- the mixer ----
+0.052000 CONTROLLER ch=0 cc=19 val=0
+0.053000 CONTROLLER ch=1 cc=19 val=127
+0.054000 CONTROLLER ch=0 cc=4 val=64
+# the LSB of the same knob: unbound, so nothing
+0.055000 CONTROLLER ch=0 cc=36 val=17
+0.056000 CONTROLLER ch=0 cc=7 val=64
+0.057000 CONTROLLER ch=0 cc=11 val=64
+0.058000 CONTROLLER ch=0 cc=15 val=64
+0.059000 CONTROLLER ch=6 cc=23 val=64
+# CH2's Sound Color FX knob: expected on CC 24
+0.060000 CONTROLLER ch=6 cc=24 val=127
+0.061000 CONTROLLER ch=6 cc=31 val=127
+0.062000 CONTROLLER ch=6 cc=12 val=64
+0.063000 CONTROLLER ch=6 cc=13 val=0
+# BOOTH LEVEL: hardware-only (D20), nothing
+0.064000 CONTROLLER ch=6 cc=9 val=100
+0.065000 CONTROLLER ch=6 cc=41 val=5
+# MASTER LEVEL: the HDMI mirror's gain and nothing else (raw 8192 = 0.5)
+0.066000 CONTROLLER ch=6 cc=8 val=64
+0.067000 CONTROLLER ch=6 cc=40 val=0
+# MASTER CUE: the controller's own (MASTER_CUE_HW=1), nothing
+0.068000 NOTEON ch=6 note=99 vel=127
+0.069000 NOTEOFF ch=6 note=99 vel=0
+
+# ---- browse ----
+0.070000 CONTROLLER ch=6 cc=64 val=1
+0.071000 CONTROLLER ch=6 cc=64 val=127
+0.072000 NOTEON ch=6 note=65 vel=127
+0.073000 NOTEOFF ch=6 note=65 vel=0
+0.074000 NOTEON ch=6 note=66 vel=127
+0.075000 NOTEOFF ch=6 note=66 vel=0
+# tilt DOWN, UP (one step each, on the press), LEFT, RIGHT
+0.076000 NOTEON ch=6 note=58 vel=127
+0.077000 NOTEOFF ch=6 note=58 vel=0
+0.078000 NOTEON ch=6 note=56 vel=127
+0.079000 NOTEOFF ch=6 note=56 vel=0
+0.080000 NOTEON ch=6 note=60 vel=127
+0.081000 NOTEOFF ch=6 note=60 vel=0
+0.082000 NOTEON ch=6 note=62 vel=127
+0.083000 NOTEOFF ch=6 note=62 vel=0
+0.084000 NOTEON ch=6 note=70 vel=127
+0.085000 NOTEOFF ch=6 note=70 vel=0
+0.086000 NOTEON ch=6 note=71 vel=127
+0.087000 NOTEOFF ch=6 note=71 vel=0
+# SHIFT + LOAD 1 / 2
+0.088000 NOTEON ch=6 note=88 vel=127
+0.089000 NOTEOFF ch=6 note=88 vel=0
+0.090000 NOTEON ch=6 note=89 vel=127
+0.091000 NOTEOFF ch=6 note=89 vel=0
+# BACK, then VIEW, PREVIEW, DISCOVER (nothing)
+0.092000 NOTEON ch=6 note=101 vel=127
+0.093000 NOTEOFF ch=6 note=101 vel=0
+0.094000 NOTEON ch=6 note=122 vel=127
+0.095000 NOTEOFF ch=6 note=122 vel=0
+0.096000 NOTEON ch=6 note=54 vel=127
+0.097000 NOTEOFF ch=6 note=54 vel=0
+0.098000 NOTEON ch=6 note=53 vel=127
+0.099000 NOTEOFF ch=6 note=53 vel=0
+
+# ---- Beat FX (ch 4) ----
+# the knob: ECHO, LC ECHO, PITCH, ROLL, MOBIUS saw, MOBIUS tri, DELAY
+0.100000 NOTEON ch=4 note=33 vel=127
+0.101000 NOTEOFF ch=4 note=33 vel=0
+0.102000 NOTEON ch=4 note=34 vel=127
+0.103000 NOTEOFF ch=4 note=34 vel=0
+0.104000 NOTEON ch=4 note=42 vel=127
+0.105000 NOTEOFF ch=4 note=42 vel=0
+0.106000 NOTEON ch=4 note=43 vel=127
+0.107000 NOTEOFF ch=4 note=43 vel=0
+0.108000 NOTEON ch=4 note=44 vel=127
+0.109000 NOTEOFF ch=4 note=44 vel=0
+0.110000 NOTEON ch=4 note=45 vel=127
+0.111000 NOTEOFF ch=4 note=45 vel=0
+0.112000 NOTEON ch=4 note=32 vel=127
+0.113000 NOTEOFF ch=4 note=32 vel=0
+# FX channel buttons in label order, as measured: On new / Off previous
+0.114000 NOTEON ch=4 note=16 vel=127
+0.115000 NOTEOFF ch=4 note=20 vel=0
+0.116000 NOTEON ch=4 note=17 vel=127
+0.117000 NOTEOFF ch=4 note=16 vel=0
+0.118000 NOTEON ch=4 note=18 vel=127
+0.119000 NOTEOFF ch=4 note=17 vel=0
+0.120000 NOTEON ch=4 note=19 vel=127
+0.121000 NOTEOFF ch=4 note=18 vel=0
+0.122000 NOTEON ch=4 note=22 vel=127
+0.123000 NOTEOFF ch=4 note=19 vel=0
+0.124000 NOTEON ch=4 note=20 vel=127
+0.125000 NOTEOFF ch=4 note=22 vel=0
+0.126000 NOTEON ch=4 note=74 vel=127
+0.127000 NOTEOFF ch=4 note=74 vel=0
+0.128000 NOTEON ch=4 note=75 vel=127
+0.129000 NOTEOFF ch=4 note=75 vel=0
+0.130000 NOTEON ch=4 note=71 vel=127
+0.131000 NOTEOFF ch=4 note=71 vel=0
+0.132000 CONTROLLER ch=4 cc=2 val=127
+
+# ---- pad modes and pads, deck 1 ----
+0.133000 NOTEON ch=0 note=27 vel=127
+0.134000 NOTEOFF ch=0 note=27 vel=0
+0.135000 NOTEON ch=7 note=0 vel=127
+0.136000 NOTEOFF ch=7 note=0 vel=0
+0.137000 NOTEON ch=7 note=7 vel=127
+0.138000 NOTEOFF ch=7 note=7 vel=0
+# STEMS: no mode, and its pads (base 16) are unbound
+0.139000 NOTEON ch=0 note=30 vel=127
+0.140000 NOTEOFF ch=0 note=30 vel=0
+0.141000 NOTEON ch=7 note=16 vel=127
+0.142000 NOTEOFF ch=7 note=16 vel=0
+0.143000 NOTEON ch=0 note=32 vel=127
+0.144000 NOTEOFF ch=0 note=32 vel=0
+0.145000 NOTEON ch=7 note=33 vel=127
+0.146000 NOTEOFF ch=7 note=33 vel=0
+0.147000 NOTEON ch=0 note=34 vel=127
+0.148000 NOTEOFF ch=0 note=34 vel=0
+0.149000 NOTEON ch=7 note=55 vel=127
+0.150000 NOTEOFF ch=7 note=55 vel=0
+# SHIFT + BEAT JUMP = BEAT LOOP; its pad base 96 is expected
+0.151000 NOTEON ch=0 note=109 vel=127
+0.152000 NOTEOFF ch=0 note=109 vel=0
+0.153000 NOTEON ch=7 note=96 vel=127
+0.154000 NOTEOFF ch=7 note=96 vel=0
+# KEYBOARD, PAD FX, KEY SHIFT: nothing
+0.155000 NOTEON ch=0 note=105 vel=127
+0.156000 NOTEOFF ch=0 note=105 vel=0
+0.157000 NOTEON ch=0 note=107 vel=127
+0.158000 NOTEOFF ch=0 note=107 vel=0
+0.159000 NOTEON ch=0 note=111 vel=127
+0.160000 NOTEOFF ch=0 note=111 vel=0
+# SHIFT + HOT CUE pad 1 (measured: ch 8 note 0), and deck 2 pad 4 (expected)
+0.161000 NOTEON ch=8 note=0 vel=127
+0.162000 NOTEOFF ch=8 note=0 vel=0
+0.163000 NOTEON ch=10 note=3 vel=127
+0.164000 NOTEOFF ch=10 note=3 vel=0
+# a shifted pad outside HOT CUE: nothing
+0.165000 NOTEON ch=8 note=32 vel=127
+0.166000 NOTEOFF ch=8 note=32 vel=0
+# deck 2 HOT CUE pad 1 (measured: ch 9 note 0)
+0.167000 NOTEON ch=9 note=0 vel=127
+0.168000 NOTEOFF ch=9 note=0 vel=0
+
+# ---- the tempo fader: the "+" end, then the centre ----
+0.169000 CONTROLLER ch=0 cc=0 val=127
+0.170000 CONTROLLER ch=0 cc=32 val=127
+0.171000 CONTROLLER ch=0 cc=0 val=64
+0.172000 CONTROLLER ch=0 cc=32 val=0

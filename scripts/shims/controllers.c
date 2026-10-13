@@ -42,7 +42,7 @@ static const unsigned char sysex_jp21_abs[] = {
 /*
  * THE TABLE.
  *
- * Two rows, and the difference between them is the whole point: the FLX4 is the
+ * The FLX4 and JP21 rows, and the difference between them is the whole point: the FLX4 is the
  * surface this port has measured end to end, so every token is filled in; the
  * JP21 is the surface this port was built from but no longer runs, so its USB id,
  * its card id and its port-name hint are NULL -- UNKNOWN, and printed as unknown
@@ -63,6 +63,24 @@ static const struct controller table[] = {
           "flx4",
           NULL, 0,                                  /* no SysEx of its own */
           sysex_flx4_keepalive, sizeof sysex_flx4_keepalive, 200,
+     },
+     {
+          /* The DDJ-GRV6, this fork's target. All four tokens MEASURED on the
+           * unit 2026-10-13 (docs/19-grv6-midi.md): lsusb's 2b73:004c, the
+           * sequencer port "DDJ-GRV6 MIDI 1", the card id DDJGRV6 from
+           * /proc/asound/cards. No keepalive: the unit was silent for 60 s
+           * untouched, and whether it WANTS one from the host is the open
+           * bench question (docs/19 "Not measured yet") -- NULL until then,
+           * not the FLX4's bytes, which are another device's protocol. Not
+           * the default row: RB_MIDI_MAP=grv6 selects it. */
+          "grv6",
+          "DDJ-GRV6",
+          "2b73:004c",
+          "GRV6",
+          "DDJGRV6",
+          "grv6",
+          NULL, 0,                                  /* no SysEx of its own */
+          NULL, 0, 0,                               /* keepalive: unmeasured */
      },
      {
           "jp21",

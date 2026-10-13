@@ -66,7 +66,7 @@ static int checks, failures;
 /* The maps this build has, as ctrlshim.c's midi_maps[]/evdev_maps[] spell them.
  * A COPY, and the header above says which direction that leaves unguarded. */
 static const char *const maps_the_build_has[] = {
-    "flx4", "jp21", "kbd", "none",
+    "flx4", "grv6", "jp21", "kbd", "none",
 };
 
 static int is_a_map(const char *name)
@@ -197,6 +197,50 @@ static void test_the_measured_row(void)
 /* ---------------------------------------------------------------------------
  * 3. The JP21's unknowns, and the empty needle
  */
+
+/* ---------------------------------------------------------------------------
+ * 2b. The GRV6's four measured tokens (docs/19-grv6-midi.md, 2026-10-13), and
+ *     the two surfaces staying apart: each port name finds its own row only.
+ * ------------------------------------------------------------------------- */
+static void test_the_grv6_row(void)
+{
+    const struct controller *g = controllers_find("grv6");
+    const struct controller *f = controllers_find("flx4");
+
+    CHECK(g != NULL, "the GRV6 must have a row");
+    if (!g)
+        return;
+    CHECK(g->usb && strcmp(g->usb, "2b73:004c") == 0,
+          "the GRV6's USB id must be 2b73:004c, not '%s'",
+          g->usb ? g->usb : "(null)");
+    CHECK(g->alsa_hint && strcmp(g->alsa_hint, "GRV6") == 0,
+          "the GRV6's port-name hint must be GRV6, not '%s'",
+          g->alsa_hint ? g->alsa_hint : "(null)");
+    CHECK(g->card_id && strcmp(g->card_id, "DDJGRV6") == 0,
+          "the GRV6's card id must be DDJGRV6, not '%s'",
+          g->card_id ? g->card_id : "(null)");
+    CHECK(g->map_name && strcmp(g->map_name, "grv6") == 0,
+          "the GRV6's map must be grv6, not '%s'",
+          g->map_name ? g->map_name : "(null)");
+    /* Unmeasured, so absent: the FLX4's bytes are another device's protocol. */
+    CHECK(g->keepalive == NULL && g->keepalive_ms == 0,
+          "the GRV6 must not carry a keepalive until one is measured");
+
+    /* The real port name, as measured (docs/19-grv6-midi.md, "Sequencer"). */
+    CHECK(controllers_by_hint("DDJ-GRV6 MIDI 1") == g,
+          "the GRV6's port name must find the GRV6's row");
+    CHECK(controllers_by_hint("DDJ-GRV6:DDJ-GRV6 MIDI 1") == g,
+          "the client:port spelling must find the GRV6's row");
+    CHECK(controllers_by_usb("2b73:004c") == g,
+          "the GRV6's USB id must find its row");
+    CHECK(f && controllers_by_hint("DDJ-FLX4 MIDI 1") == f,
+          "adding the GRV6 must not take the FLX4's port name");
+    CHECK(f && g != f && strcmp(g->usb, f->usb) != 0,
+          "the GRV6 and the FLX4 must not share a USB id");
+    /* The default stays the FLX4: this fork selects the GRV6 explicitly. */
+    CHECK(controllers_default() == f,
+          "the default row must still be the FLX4");
+}
 
 static void test_the_unknowns_stay_unknown(void)
 {
@@ -450,6 +494,7 @@ int main(void)
 {
     test_shape();
     test_the_measured_row();
+    test_the_grv6_row();
     test_the_unknowns_stay_unknown();
     test_find_and_hint();
     test_default();
