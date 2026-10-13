@@ -20,8 +20,8 @@ will be written from.
   1-based "MIDI list" channel is this number + 1. docs/15 explains why this
   conversion is the most load-bearing detail of a map.
 * Two blocks were captured wrongly by the operator (Beat FX `BEAT < / BEAT >` and
-  the Beat FX assign knob, first pass) and were re-captured; only the re-captures
-  are used below.
+  the FX channel select buttons, first pass) and were re-captured; only the
+  re-captures are used below.
 * Unless noted, every button sends Note On velocity 127 on press and Note Off on
   release, and every knob/fader sends a **14-bit pair**: MSB on CC *n*, LSB on CC
   *n*+32 (the FLX4's convention).
@@ -124,16 +124,17 @@ in the order the prompt named; the table uses the performed order.
 
 | Control | Message | FLX4 |
 |---|---|---|
-| FX SELECT | **one note per position, 32–45 (0x20–0x2D): 14 positions** | **differs** (FLX4: one stepping note, 99, + SHIFT 100) |
+| Beat FX knob (effect select) | **one note per position, 32–45 (0x20–0x2D): 14 positions** as it was turned | **differs** (FLX4: an FX SELECT button stepping one note, 99, + SHIFT 100) |
 | BEAT < / BEAT > | note 74 / 75 (0x4A / 0x4B) | same |
-| **FX assign knob** (the FLX4's CH SELECT lever) | **one note per position, all on ch 4**: left to right **16, 20, 17, 18, 19, 22** (0x10, 0x14, 0x11, 0x12, 0x13, 0x16) | **differs** (FLX4: 16 on ch 4 and 17 on ch 5, two legs) |
+| **FX channel select buttons** (six; the FLX4 has a CH SELECT lever) | **one note per button, all on ch 4**: left to right **16, 20, 17, 18, 19, 22** (0x10, 0x14, 0x11, 0x12, 0x13, 0x16) | **differs** (FLX4: 16 on ch 4 and 17 on ch 5, two legs) |
 | LEVEL/DEPTH | CC 2 / 34 | same |
 | FX ON/OFF | note 71 (0x47) | same note (FLX4 sends it on one leg per target channel) |
 
-The assign knob's printed labels for the six positions: TODO. By the FLX4's
-numbering (16 = CH1, 17 = CH2, 20 = MASTER) the order would read CH1, MASTER,
-CH2, CH3, CH4, and 22 for the sixth (Sampler?). That is an **inference**, not a
-reading of the panel.
+The six buttons' printed labels: TODO. By the FLX4's numbering (16 = CH1,
+17 = CH2, 20 = MASTER) the order would read CH1, MASTER, CH2, CH3, CH4, and 22 for
+the sixth. That is an **inference**, not a reading of the panel. The effect names
+printed at the Beat FX knob's 14 positions: TODO (they would let each position
+select the matching rbp effect directly).
 
 ## Pads
 
@@ -156,4 +157,5 @@ the GRV6's Groove Circuit / Stems / Keyboard modes): TODO.
   the faders and CH3 CUE; SHIFT variants of most deck controls.
 * Whether BEAT SYNC is sent on press or on release (the capture has both events
   but no timestamps).
-* Printed labels: the FX assign knob's six positions, the four pad modes.
+* Printed labels: the six FX channel select buttons, the Beat FX knob's 14
+  positions, the four pad modes.
