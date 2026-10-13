@@ -250,6 +250,13 @@ struct led_notes {
      int n_meter_master_l; /* master meter CCs, left then right; the FLX4 has
                             * neither and leaves both at -1 */
      int n_meter_master_r;
+
+     /* 1 = this panel blinks its FX-group LEDs by itself: "on" (0x7F) shows as
+      * a blink and 0 as solid, so rbp's blink State is sent as on and every
+      * other State as off (led_fx_on(), led_table.h). 0 (the default, and
+      * every surface but the GRV6) = this bridge renders the blink. At the end
+      * of the struct so a table that never names it reads 0. */
+     int fx_panel_blinks;
 };
 
 /* Empty both tables. Called by the front end exactly once, before any build():

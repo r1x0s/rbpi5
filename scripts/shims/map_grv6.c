@@ -923,7 +923,8 @@ static void grv6_event(const struct snd_seq_event *ev)
  *     and 32 in BEAT JUMP (both seen); BLUE ONLY, and only at velocity 127 --
  *     every velocity from 1 to 120 left the pad dark -- so they are on/off.
  *   CH1 / CH2 CUE: note 84 on ch 0 / 1 (orange).
- *   Beat FX ON/OFF: note 71 on ch 4 (blue, blinking).
+ *   Beat FX ON/OFF: note 71 on ch 4 -- blue, and the GRV6 BLINKS it itself at
+ *     velocity 127 while 0/1 show it solid (C-045), hence fx_panel_blinks.
  *   CH1 meter: CC 2 on ch 0 moved the meter bottom -> top -> bottom.
  *
  * What the GRV6 LIGHTS BY ITSELF, with no host message (owner, same run), and
@@ -991,6 +992,11 @@ static const struct led_notes grv6_leds = {
      .meter_master_ch = -1,    /* no master meter probed */
      .n_meter_master_l = -1,
      .n_meter_master_r = -1,
+
+     .fx_panel_blinks = 1,     /* MEASURED (C-045): FX ON/OFF at velocity 0/1 is
+                                * solid, at 127 the GRV6 blinks it itself (and
+                                * with nothing sent it blinks too). rbp: FX off =
+                                * lit, FX on = blink, so off -> 0, on -> 127 */
 };
 
 const struct ctrl_map map_grv6 = {

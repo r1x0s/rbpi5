@@ -61,6 +61,15 @@ unsigned int led_merge_settled(const unsigned char *a, const unsigned char *b,
      return n;
 }
 
+int led_fx_on(int st, int blink_phase, int panel_blinks)
+{
+     if (st < 0)
+          return 0;
+     if (panel_blinks)
+          return st == 2;
+     return st == 2 ? (blink_phase != 0) : (st != 0);
+}
+
 int led_blink_on(unsigned long long now_ms, unsigned int period_ms,
                  unsigned int fallback_ms)
 {

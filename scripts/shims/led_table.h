@@ -70,4 +70,20 @@ const unsigned char *led_find(const unsigned char *tbl, unsigned int count,
 int led_blink_on(unsigned long long now_ms, unsigned int period_ms,
                  unsigned int fallback_ms);
 
+/* Is an FX-group LED (Beat FX ON/OFF and the CFX buttons) to be sent ON this
+ * instant? `st` is rbp's State for it (-1 = no entry, 0 off, 1 lit, 2 blink),
+ * `blink_phase` is led_blink_on()'s answer for its period.
+ *
+ * panel_blinks = 0 (every surface before the GRV6): this bridge renders the
+ * blink, so State 2 follows the phase and any other non-zero State is on.
+ *
+ * panel_blinks = 1: the PANEL blinks this LED itself when it receives "on"
+ * (0x7F) and shows it solid at velocity 0 -- the DDJ-GRV6's Beat FX ON/OFF,
+ * measured 2026-10-13 (C-045: velocity 0/1 solid, 127 blinking, nothing sent
+ * = blinking). There "on" has to mean "rbp asks for a blink" and nothing else:
+ * rbp's lit-but-not-blinking State (FX off, on the RX3) must go out as 0 to be
+ * solid, and toggling a blink here on top of the panel's own made it blink
+ * visibly faster. */
+int led_fx_on(int st, int blink_phase, int panel_blinks);
+
 #endif /* RBPI4B_LED_TABLE_H */

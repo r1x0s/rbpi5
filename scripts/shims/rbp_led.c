@@ -640,8 +640,8 @@ static void led_refresh(void)
      /* global LEDs, straight from rbp (id -> whatever note this panel uses) */
      for (int g = 0; g < LED_FX_COUNT; g++) {
           int st = ledstat_state(led_g_tab[g].id, 0);
-          int on = (st < 0) ? 0 : (st == 2 ? led_blink_for(led_g_tab[g].id, 0)
-                                           : (st != 0));
+          int on = led_fx_on(st, st == 2 ? led_blink_for(led_g_tab[g].id, 0) : 0,
+                             n->fx_panel_blinks);
           led_apply_g(g, n->fx_ch, n->n_fx[g], on);
      }
 

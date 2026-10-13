@@ -566,6 +566,8 @@ static void check_leds(void)
      CHECK(l->meter_ch_first == 0 && l->n_meter_cc == 2,
            "the channel meter is CC 2 on the deck channel (CH1 measured)");
      CHECK(l->meter_master_ch == -1, "no master meter was probed");
+     CHECK(l->fx_panel_blinks == 1,
+           "the GRV6 blinks FX ON/OFF itself (C-045): fx_panel_blinks must be 1");
 
      /* Nothing the table can send may land on a self-lit LED. */
      for (int d = 0; d < 2; d++) {

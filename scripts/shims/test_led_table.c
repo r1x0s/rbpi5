@@ -285,11 +285,32 @@ static void test_blink(void)
           "t=350 and says on");
 }
 
+/* led_fx_on(): the FX-group decision, both ways round (C-045). */
+static void test_fx_on(void)
+{
+    /* the bridge blinks (every surface but the GRV6) */
+    CHECK(led_fx_on(-1, 1, 0) == 0, "no entry must be off");
+    CHECK(led_fx_on(0, 1, 0) == 0, "State 0 must be off");
+    CHECK(led_fx_on(1, 0, 0) == 1, "State 1 must be on whatever the phase");
+    CHECK(led_fx_on(2, 1, 0) == 1, "State 2 must follow the phase (on half)");
+    CHECK(led_fx_on(2, 0, 0) == 0, "State 2 must follow the phase (off half)");
+    CHECK(led_fx_on(3, 0, 0) == 1, "State 3 (dim) counts as on");
+    /* the panel blinks (the GRV6): only rbp's blink request is "on" */
+    CHECK(led_fx_on(-1, 1, 1) == 0, "panel-blinks: no entry must be 0");
+    CHECK(led_fx_on(0, 1, 1) == 0, "panel-blinks: State 0 must be 0");
+    CHECK(led_fx_on(1, 1, 1) == 0,
+          "panel-blinks: State 1 (lit = FX off) must be 0, which the panel shows solid");
+    CHECK(led_fx_on(2, 0, 1) == 1 && led_fx_on(2, 1, 1) == 1,
+          "panel-blinks: State 2 (FX on) must be on in BOTH phases -- the panel blinks it");
+    CHECK(led_fx_on(3, 1, 1) == 0, "panel-blinks: State 3 is not a blink request");
+}
+
 int main(void)
 {
     test_find();
     test_merge();
     test_blink();
+    test_fx_on();
 
     printf("%s: %d checks, %d failures\n", failures ? "FAIL" : "ok", checks, failures);
     return failures ? 1 : 0;
