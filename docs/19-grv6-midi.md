@@ -203,7 +203,9 @@ card and the MIDI side the `GRV6` port name (the `grv6` row of
 | browse tilt UP / DOWN / LEFT / RIGHT | step up / step down / BACK / select | the keyboard map's arrows, BACKSPACE and ENTER |
 | BACK | BACK | |
 | LOAD, SHIFT+LOAD 1 / 2 | LOAD, TRACK FILTER / SHORTCUT | the FLX4 map's actions on the GRV6's notes |
-| VIEW, PREVIEW, DISCOVER | nothing, logged | no rbp equivalent |
+| VIEW | BROWSE (opens / closes the browser) | D25: BACK never leaves the browser; rbp's BROWSE key does. upstream's JP21 map binds its VIEW the same way |
+| DISCOVER | SOURCE (the media list: USB 1, …) | D25: one press; SHIFT + browse push still does the same |
+| PREVIEW | nothing, logged | no rbp equivalent |
 | MASTER LEVEL | the HDMI mirror's level only | as the FLX4 map |
 | BOOTH LEVEL | nothing | the controller's own booth output (D20) |
 | MASTER CUE | the controller only | done in hardware (measured), so rbp's own master cue is held off; `RB_MASTER_CUE_HW=0` gives the FLX4 map's behaviour |

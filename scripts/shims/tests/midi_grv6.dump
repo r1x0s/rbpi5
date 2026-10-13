@@ -133,7 +133,7 @@
 0.089000 NOTEOFF ch=6 note=88 vel=0
 0.090000 NOTEON ch=6 note=89 vel=127
 0.091000 NOTEOFF ch=6 note=89 vel=0
-# BACK, then VIEW, PREVIEW, DISCOVER (nothing)
+# BACK, then VIEW (-> BROWSE), PREVIEW (nothing), DISCOVER (-> SOURCE)
 0.092000 NOTEON ch=6 note=101 vel=127
 0.093000 NOTEOFF ch=6 note=101 vel=0
 0.094000 NOTEON ch=6 note=122 vel=127

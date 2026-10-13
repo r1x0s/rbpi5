@@ -211,7 +211,9 @@ static const struct expect expect[] = {
      { 0, K_TRACKFILTER, OP_RELEASE, CH_GLOBAL, 0, 0.0f, 0 },
      PR(K_SHORTCUT, CH_GLOBAL),
      PR(K_BACK, CH_GLOBAL),          /* the BACK button */
-     /* VIEW, PREVIEW, DISCOVER: nothing */
+     PR(K_BROWSE, CH_GLOBAL),        /* VIEW (D25) */
+     /* PREVIEW: nothing */
+     PR(K_SOURCE, CH_GLOBAL),        /* DISCOVER (D25) */
      /* ---- Beat FX ---- */
      { 0, K_BFXTYPE, OP_VALUE, CH_GLOBAL, 1,  0.0f, 0 },  /* ECHO */
      { 0, K_BFXTYPE, OP_VALUE, CH_GLOBAL, 2,  0.0f, 0 },  /* LC ECHO -> PING PONG */

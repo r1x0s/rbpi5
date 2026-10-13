@@ -50,7 +50,8 @@
  *      button, not a release, so only Note On means anything (D17).
  *   4. BEAT SYNC has no separate long-press note (FLX4: 92); SHIFT + LOAD is
  *      88/89 (FLX4: 104/122); SHIFT + PLAY is 71 (FLX4: 14).
- *   5. New controls: BACK, VIEW, PREVIEW, DISCOVER and a four-way browse tilt;
+ *   5. New controls: BACK, VIEW (-> BROWSE), PREVIEW, DISCOVER (-> SOURCE)
+ *      and a four-way browse tilt;
  *      KEY SYNC, MASTER TEMPO and MEMORY on each deck; BOOTH LEVEL.
  *   6. MASTER CUE IS DONE IN THE CONTROLLER. Measured during the audio check:
  *      pressing it mixes master into the headphones with no host involved. So
@@ -147,9 +148,9 @@
 #define N_LOAD1_SHIFT  88   /* -> TRACK FILTER (the FLX4's SHIFT+LOAD 1 action) */
 #define N_LOAD2_SHIFT  89   /* -> SHORTCUT     (the FLX4's SHIFT+LOAD 2 action) */
 #define N_BACK         101
-#define N_VIEW         122  /* no rbp equivalent */
+#define N_VIEW         122  /* -> rbp's BROWSE key: opens/closes the browser (D25) */
 #define N_PREVIEW      54   /* no rbp equivalent */
-#define N_DISCOVER     53   /* no rbp equivalent */
+#define N_DISCOVER     53   /* -> rbp's SOURCE screen, the media list (D25) */
 
 /* ---- Beat FX (ch 4) -------------------------------------------------------- */
 #define N_FXCH_1       16   /* FX channel buttons: a radio group, Note On only */
@@ -790,12 +791,18 @@ static void grv6_build(void)
      add_note(CH_MIX, N_BACK, K_BACK, CH_GLOBAL);
      add_note(CH_MIX, N_TILT_LEFT, K_BACK, CH_GLOBAL);
      add_note(CH_MIX, N_TILT_RIGHT, K_SELECTOR, CH_GLOBAL);
-     /* No rbp equivalent: rekordbox's VIEW, PREVIEW and DISCOVER. BOOTH LEVEL
-      * (CC 9/41) is not a row at all: it is the controller's own booth output
-      * (D20) and arrives as an unmapped CC. */
-     add_note(CH_MIX, N_VIEW, 0, CH_GLOBAL);
+     /* VIEW and DISCOVER (D25, the owner's choice after the first run on the
+      * unit): BACK only climbs to the top of the list and never leaves the
+      * browser, and rbp's own BROWSE key (the keyboard map's `6`, tried there)
+      * is what closes it -- so VIEW, the GRV6's "change the screen" button,
+      * sends it. upstream's JP21 map binds its VIEW the same way. DISCOVER
+      * opens the SOURCE screen (the USB list) in one press; SHIFT + push still
+      * does too. PREVIEW has no rbp equivalent. BOOTH LEVEL (CC 9/41) is not a
+      * row at all: it is the controller's own booth output (D20) and arrives as
+      * an unmapped CC. */
+     add_note(CH_MIX, N_VIEW, K_BROWSE, CH_GLOBAL);
      add_note(CH_MIX, N_PREVIEW, 0, CH_GLOBAL);
-     add_note(CH_MIX, N_DISCOVER, 0, CH_GLOBAL);
+     add_note(CH_MIX, N_DISCOVER, K_SOURCE, CH_GLOBAL);
 
      /* ---- Beat FX (ch 4) ---- */
      add_note(CH_FX, N_FX_ONOFF, K_BFX, CH_GLOBAL);
