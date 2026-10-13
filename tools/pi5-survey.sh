@@ -18,8 +18,8 @@
 # it answers, so the output can be read straight into docs/port/pi5-bringup.md.
 # A command that is missing on this image prints its own error into the file
 # rather than aborting the survey: an absent tool is itself a fact worth having.
-# The output is meant to be committed, so the board serial and MAC addresses
-# are left out of it.
+# The output is meant to be committed, so the board serial, MAC addresses, the
+# root PARTUUID and the Imager's instance id are left out of it.
 
 OUT="${1:-./pi5-survey.txt}"
 FBDUMP="${FBDUMP:-./fbdump}"
@@ -46,8 +46,11 @@ head -4 /etc/os-release
 
 sec "kernel  [A1]"
 uname -a
-# the firmware can put a MAC address on the command line; this file gets committed
-echo "cmdline: $(sed -E 's/(macaddr=)[0-9A-Fa-f:]+/\1(redacted)/g' /proc/cmdline)"
+# This file gets committed, so the unit-identifying tokens are masked: the MAC
+# the firmware adds, the root partition's PARTUUID and the Imager's instance id.
+echo "cmdline: $(sed -E -e 's/(macaddr=)[0-9A-Fa-f:]+/\1(redacted)/g' \
+	-e 's/(PARTUUID=)[0-9A-Fa-f-]+/\1(redacted)/g' \
+	-e 's/(ds=nocloud;i=)[^ ]+/\1(redacted)/g' /proc/cmdline)"
 
 sec "pagesize  [A1: must be 4096 -- kernel=kernel8.img under [pi5]]"
 getconf PAGESIZE
