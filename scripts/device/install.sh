@@ -7,6 +7,22 @@
 #   scp -r scripts/device pi@<host>:/tmp/
 #   ssh pi@<host> 'sudo sh /tmp/device/install.sh /tmp/rbpi4b-pi4.tgz'
 #
+# ON A RUNNING UNIT (C-022/C-039): the unpack would write through the chroot's
+# live bind mounts into the HOST's /dev and /tmp, so before it does anything else
+# this script stops rblive4, unmounts everything under the deploy root (deepest
+# first, as uninstall.sh does), proves nothing is left mounted, and refuses to
+# unpack if anything is. A player that was running is started again at the end.
+# No `systemctl disable` and no reboot are needed any more.
+#
+# Shims only, no tarball (the fast path while iterating on a map):
+#
+#   sudo sh /tmp/device/install.sh shims <dir holding the built shims>
+#
+# installs fbshim.so knobshim.so audioshim.so crashcatch.so netshim.so ccexit
+# controllers_cli (whichever <dir> has) into the deploy root, each with a .prev
+# backup, and restarts rblive4: start-rb.sh copies them into the chroot at every
+# launch. Nothing is unpacked and no mount is touched.
+#
 # Untars the deploy root to RB_DEPLOY_ROOT (default /opt/rblive4), copies the
 # device scripts in beside it, installs the systemd unit that starts the player
 # at boot, and runs fix-dev.sh. Idempotent: re-running upgrades in place, and
@@ -43,6 +59,90 @@ fi
 
 [ "$(id -u)" = "0" ] || die "must run as root (the chroot needs /dev/mknod and bind mounts)"
 
+# Install one build output into the deploy root, atomically, keeping the
+# replaced copy as <name>.prev. Used by the `shims` entry point just below and by
+# the deploy-root artifact step of a full install (see the comment there).
+install_artifact() {
+  name=$1
+  src=$2
+  dst="$DEPLOY/$name"
+
+  if [ ! -f "$src" ]; then
+    say "  $name: no source at $src -- leaving whatever is deployed alone"
+    return 0
+  fi
+  if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
+    say "  $name: already current"
+    return 0
+  fi
+  # Staged beside the target and renamed into place, so the deploy root never
+  # holds a half-written .so. It matters more here than it looks: start-rb.sh
+  # copies this directory into the chroot at every launch, so a truncated file
+  # would not merely sit there -- it would be installed, and the next launch would
+  # load it. A rename within one directory is atomic; a cp is not.
+  tmp="$dst.new.$$"
+  if ! install -m 755 -o root -g root "$src" "$tmp"; then
+    rm -f "$tmp" 2>/dev/null || true
+    warn "could not install $name from $src -- $dst is UNCHANGED"
+    return 0
+  fi
+
+  # The backup is taken only once the staged copy is known good, so .prev always
+  # means "the build that was running before the last change that actually
+  # happened". Taking it earlier would spend the rollback point on a run that
+  # then failed, and quietly walk the good generation off the end of the chain.
+  #
+  # Refuse to replace without it: an install that cannot be taken back is worse
+  # than an install that did not happen, because the way back is one `mv` and
+  # nobody is at the machine to do it by hand.
+  was_present=0
+  if [ -f "$dst" ]; then
+    was_present=1
+    if ! cp -p "$dst" "$dst.prev"; then
+      rm -f "$tmp" 2>/dev/null || true
+      warn "could not write $dst.prev -- refusing to replace $name, because the
+  deployed copy would then have no way back. $dst is UNCHANGED"
+      return 0
+    fi
+  fi
+
+  mv -f "$tmp" "$dst"
+  if [ "$was_present" = 1 ]; then
+    say "  $name: replaced (previous kept as $name.prev)"
+  else
+    say "  $name: installed (was not present)"
+  fi
+}
+
+# --- `install.sh shims <dir>`: update the deploy-root shims only -------------
+#
+# The fast path while iterating on the shims (a controller map, say). The
+# deploy-root copies are authoritative: start-rb.sh's install_override() copies
+# them into the chroot at every launch (start-rb.sh:127-140), so replacing them
+# and restarting the player is the whole deploy. No tarball, no unpack, and the
+# chroot's bind mounts are never written through -- so this is safe on a running
+# unit, which a tarball unpack is not (C-022).
+if [ "${1:-}" = "shims" ]; then
+  ART="${2:-}"
+  [ -n "$ART" ] && [ -d "$ART" ] || die "usage: install.sh shims <directory holding the built shims>"
+  [ -d "$DEPLOY/rbx3-run" ] || die "nothing is installed at $DEPLOY yet: run a full install with the tarball first"
+  say "shims only: $ART -> $DEPLOY (no tarball, no unpack, no mount touched)"
+  for a in fbshim.so knobshim.so audioshim.so crashcatch.so netshim.so ccexit controllers_cli; do
+    install_artifact "$a" "$ART/$a"
+  done
+  if [ -f "$ART/libdirectfb_fbdev.so" ]; then
+    install_artifact libdirectfb_fbdev-rot16.so "$ART/libdirectfb_fbdev.so"
+  fi
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet rblive4.service; then
+    systemctl restart rblive4.service || die "systemctl restart rblive4 failed: see systemctl status rblive4"
+    say "rblive4 restarted: start-rb.sh copies the new shims into the chroot as it launches"
+  else
+    say "rblive4 is not running; the new shims are used at its next start (systemctl start rblive4)"
+  fi
+  say "to go back: for each replaced file, mv $DEPLOY/<name>.prev $DEPLOY/<name>, then systemctl restart rblive4"
+  exit 0
+fi
+
 [ -f "$TARBALL" ] || die "tarball not found: $TARBALL
   build it on the workstation with scripts/build-chroot.sh, then scp it here."
 
@@ -76,6 +176,55 @@ if [ "$_pagesize" != "4096" ]; then
 fi
 
 # --- unpack -----------------------------------------------------------------
+
+# --- a running unit: stop it and release the chroot's mounts first (C-022) ---
+#
+# `tar -xzf` as root re-applies each archived directory's owner, mode and mtime,
+# and creates rbx3-run/dev/mtab. With fix-dev.sh's binds live, rbx3-run/dev and
+# rbx3-run/tmp ARE the host's /dev and /tmp, so the unpack rewrites those: on
+# 2026-10-13 that broke PTY allocation for every new SSH login until a reboot
+# (C-021, C-022). docs/13's 2026-09-27 /dev wipe was the same class. So: stop the
+# player (its cleanup kills rbp and edb_streamd and stops the USB watcher),
+# unmount everything under the deploy root deepest-first, re-read /proc/mounts,
+# and refuse to unpack while anything is left. The mount listing is
+# uninstall.sh's, for the same reason it gives there.
+_mounts_under() {
+  sed 's/\\040/ /g' /proc/mounts 2>/dev/null |
+    awk -v r="$DEPLOY" '$2 == r || substr($2, 1, length(r) + 1) == r "/" { print $2 }' |
+    awk '{ print length($0) "\t" $0 }' | sort -rn | cut -f2- | grep -v '^$' || true
+}
+
+WAS_ACTIVE=0
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet rblive4.service; then
+  WAS_ACTIVE=1
+  say "rblive4 is running: stopping it before the unpack (it is started again at the end)"
+  systemctl stop rblive4.service || die "systemctl stop rblive4 failed; nothing was unpacked"
+fi
+
+if [ -n "$(_mounts_under)" ]; then
+  say "unmounting everything under $DEPLOY before the unpack"
+  _mounts_under | while IFS= read -r m; do
+    [ -n "$m" ] || continue
+    say "  unmounting $m"
+    umount "$m" || warn "could not unmount $m"
+  done
+  STILL=$(_mounts_under)
+  if [ -n "$STILL" ]; then
+    echo "$STILL" | sed 's/^/    /' >&2
+    _restarted=""
+    if [ "$WAS_ACTIVE" = 1 ]; then
+      systemctl start rblive4.service || true
+      _restarted=" rblive4 was started again."
+    fi
+    die "the mounts above are still in place, so the tarball was NOT unpacked: it
+  would have written through them into the host's /dev and /tmp. Nothing else was
+  changed.$_restarted Find what holds them with
+    fuser -vm <mount>
+  or take the old safe route: systemctl disable --now rblive4, reboot, run this
+  installer again, then systemctl enable rblive4."
+  fi
+  say "  nothing is mounted under $DEPLOY any more"
+fi
 
 say "deploying to $DEPLOY"
 mkdir -p "$DEPLOY"
@@ -263,58 +412,9 @@ fi
 
 SHIM_SRC="${RB_ARTIFACT_DIR:-$HERE/../shims}"
 DFB_SRC="${RB_ARTIFACT_DIR:-$HERE/../../work/dfb/lib/directfb-1.4-6/systems}"
+# install_artifact() itself is defined near the top of this file, because the
+# `shims` entry point uses it before any of the tarball steps run.
 
-install_artifact() {
-  name=$1
-  src=$2
-  dst="$DEPLOY/$name"
-
-  if [ ! -f "$src" ]; then
-    say "  $name: no source at $src -- leaving whatever is deployed alone"
-    return 0
-  fi
-  if [ -f "$dst" ] && cmp -s "$src" "$dst"; then
-    say "  $name: already current"
-    return 0
-  fi
-  # Staged beside the target and renamed into place, so the deploy root never
-  # holds a half-written .so. It matters more here than it looks: start-rb.sh
-  # copies this directory into the chroot at every launch, so a truncated file
-  # would not merely sit there -- it would be installed, and the next launch would
-  # load it. A rename within one directory is atomic; a cp is not.
-  tmp="$dst.new.$$"
-  if ! install -m 755 -o root -g root "$src" "$tmp"; then
-    rm -f "$tmp" 2>/dev/null || true
-    warn "could not install $name from $src -- $dst is UNCHANGED"
-    return 0
-  fi
-
-  # The backup is taken only once the staged copy is known good, so .prev always
-  # means "the build that was running before the last change that actually
-  # happened". Taking it earlier would spend the rollback point on a run that
-  # then failed, and quietly walk the good generation off the end of the chain.
-  #
-  # Refuse to replace without it: an install that cannot be taken back is worse
-  # than an install that did not happen, because the way back is one `mv` and
-  # nobody is at the machine to do it by hand.
-  was_present=0
-  if [ -f "$dst" ]; then
-    was_present=1
-    if ! cp -p "$dst" "$dst.prev"; then
-      rm -f "$tmp" 2>/dev/null || true
-      warn "could not write $dst.prev -- refusing to replace $name, because the
-  deployed copy would then have no way back. $dst is UNCHANGED"
-      return 0
-    fi
-  fi
-
-  mv -f "$tmp" "$dst"
-  if [ "$was_present" = 1 ]; then
-    say "  $name: replaced (previous kept as $name.prev)"
-  else
-    say "  $name: installed (was not present)"
-  fi
-}
 
 say "deploy-root runtime artifacts (these override the copies inside the chroot)"
 
@@ -538,6 +638,15 @@ if [ -x "$DEPLOY/fix-dev.sh" ] || [ -f "$DEPLOY/fix-dev.sh" ]; then
 else
   warn "fix-dev.sh not found; the device binds and stubs are NOT in place and
   rbp will not start. Re-run this installer with scripts/device/ present."
+fi
+
+if [ "$WAS_ACTIVE" = 1 ]; then
+  if systemctl start rblive4.service; then
+    say "rblive4 started again (it was running when this install began)"
+  else
+    warn "rblive4 was running before the install and did not start again:
+  systemctl status rblive4"
+  fi
 fi
 
 echo
