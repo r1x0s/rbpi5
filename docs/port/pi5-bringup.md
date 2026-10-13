@@ -57,9 +57,9 @@ Each row is a gate for the next one, as in docs/13.
 
 | Step | Check | Pi 5 result |
 |---|---|---|
-| S0.1 | `make -C scripts/shims RX3=… check` — only `GLIBC_2.4/2.7` | TODO: unverified |
-| S0.2 | patch chain hashes reproduce (`4f2efcfc` → `3dda2d4e` → `97aa2223` → `99040424`) | TODO: unverified |
-| S0.3 | `scripts/build-chroot.sh`; tarball's `libdirectfb_fbdev.so` matches `work/dfb`'s | TODO: unverified |
+| S0.1 | `make -C scripts/shims RX3=… check` — only `GLIBC_2.4/2.7` | **pass, 2026-10-13** (on the build VM, `port/pi5` @ 7755180): every shim `GLIBC_2.4`, plus `2.7` on knobshim and netshim; every undefined symbol resolved, `fstat` dangling only in fbshim as allowed. `make test` green under `qemu-arm` 7.2.22: e.g. `test_point` 123, `test_audio` 623, `test_midi` 173, `test_flx4` 4127, `test_kbd` 375, `test_menu` 13513 checks, `test_evdev` 5 and `test_cursor_dev` 14 scenarios, 0 failures in every suite |
+| S0.2 | patch chain hashes reproduce (`4f2efcfc` → `3dda2d4e` → `97aa2223` → `99040424`) | **pass, 2026-10-13**: stock `4f2efcfc0c9e3f539289f863acfddcc6`, `rbp-audio` `3dda2d4e10187a75bfc16a7b4f16f192`, and `build-chroot.sh`'s depth stage reads `97aa2223c4ca5906b66389420f29d03f` and writes `990404244853a7d613be3d469ad1bc1d` (`RB_FB_LIE_BPP=32`) |
+| S0.3 | `scripts/build-chroot.sh`; tarball's `libdirectfb_fbdev.so` matches `work/dfb`'s | **pass, 2026-10-13**: `rbpi4b-pi4.tgz` 33 MB, sha256 `ac4d8d940d79ba2c1902aad0c843cde978ea9a3f6048b499a67d38a14b78b881`. Its `usr/lib/directfb-1.4-6/systems/libdirectfb_fbdev.so` = `work/dfb`'s (`ad0bed56…489e`); `directfbrc` names `module-dir=/usr/lib/directfb-1.4-6`; `rb.conf`, both `TouchCalib_*.dat` and all five shims present. The tarball **also** carries the RX3 rootfs's stock module under `directfb-1.4-0` (unused), so a wildcard `tar -xzO '*systems/libdirectfb_fbdev.so'` concatenates both and never matches: name the member by its full path |
 | S1.1 | `getconf LONG_BIT` = 32, `dpkg --print-architecture` = `armhf`, `32-bit EL0 Support`, **`PAGESIZE` = 4096** | TODO: unverified |
 | S1.2 | `/dev/fb0`, `/dev/snd/seq`, `/dev/input/event*` present | TODO: unverified |
 | S1.3 | `fbdump` reading (pre-recipe) | TODO: unverified |
