@@ -49,10 +49,10 @@ Pi 4 values are upstream's measurements from [13](../13-raspberrypi4.md).
 | A10 | `healthwatch.sh` USB entry count `^[0-9]+-[0-9.]+$` | — | **no change**: the count is only logged (`usb=` field), never compared, so there is no baseline to move. Survey value: 1 (the stick alone) |
 | A11 | `eth0`/`wlan0` (`netshim`, `RB_NETALIAS_*`) | — | **verified, no change**: `lo`, `eth0` (down), `wlan0` (up) |
 | A12 | `gpioshim.c` stubs `/dev/gpiodrv` | not real GPIO | no change: it never touches Pi GPIO |
-| A13 | timing-dependent crash fixed by `patch-rbp-nopc.py`; spontaneous exits (S3.7) | Pi 4 speed | TODO: soak result |
-| A14 | power: no under-voltage | controller dropped once (S4.4) | `throttled=0x0`, EXT5V 5.13 V, 51 °C, with the stick only. TODO: again with mouse + keyboard, and after the soak |
+| A13 | timing-dependent crash fixed by `patch-rbp-nopc.py`; spontaneous exits (S3.7) | Pi 4 speed | **none seen** in the 1 h soak (`NRestarts=0`, no `crash.log`); longer sessions not yet run |
+| A14 | power: no under-voltage | controller dropped once (S4.4) | **verified**: `throttled=0x0` with the stick only (survey), and in every healthwatch sample of the 1 h soak with stick, G502 mouse and keyboard attached |
 | A16 | default controller row is `flx4` | FLX4 attached | `RB_MIDI_MAP=kbd` in `rb.local.conf` for Phase 1 |
-| A18 | (new on the Pi 5) the fbdev buffer is mapped through the **IOMMU**: `fb_mmap` → `drm_fbdev_dma_fb_mmap` → `drm_gem_dma_mmap` → `iommu_dma_mmap` → `vm_map_pages`. `drm_gem_dma_mmap` passes the *VMA* size, so nothing bounds a mapping longer than the buffer | Pi 4: no IOMMU on this path; an over-long map silently covers neighbouring memory | **breaks the 32 bpp default.** With `RB_FB_LIE_BPP=32` (shim `line_length` 5120, real `smem_len` 2,048,000) rbp's thread `gui_task` oopsed in `validate_page_before_insert` 0.8 s after launch (2026-10-13 10:08, `Oops: 0000000096000007`), wedging rbp in `D` and leaving the screen black. With `RB_FB_LIE_BPP=16` and the 16 bpp player: no oops, UI up (S2.2). Cause **suspected, not measured**: a mapping sized line_length × yres (4,096,000 bytes). Workaround: 16 bpp. Fix: TODO |
+| A18 | (new on the Pi 5) the fbdev buffer is mapped through the **IOMMU**: `fb_mmap` → `drm_fbdev_dma_fb_mmap` → `drm_gem_dma_mmap` → `iommu_dma_mmap` → `vm_map_pages`. `drm_gem_dma_mmap` passes the *VMA* size, so nothing bounds a mapping longer than the buffer | Pi 4: no IOMMU on this path; an over-long map silently covers neighbouring memory | **breaks the 32 bpp default.** With `RB_FB_LIE_BPP=32` (shim `line_length` 5120, real `smem_len` 2,048,000) rbp's thread `gui_task` oopsed in `validate_page_before_insert` 0.8 s after launch (2026-10-13 10:08, `Oops: 0000000096000007`), wedging rbp in `D` and leaving the screen black. With `RB_FB_LIE_BPP=16` and the 16 bpp player: no oops, UI up (S2.2). Cause **suspected, not measured**: a mapping sized line_length × yres (4,096,000 bytes). Since C-019, 16 bpp is this fork's `rb.conf` default. A fix that makes 32 safe: optional, later |
 | A17 | (new on the Pi 5) the board has a power button, `pwr_button`, an `EV_KEY` input device | — | **no change.** `evdev_io.c` opens every `EV_KEY` node read-only and never grabs it; its comment names a gpio-keys power button as expected, and an unmapped `KEY_POWER` is dropped by the map. Pressing the button still reaches logind as usual (it powers the board off) |
 
 ## Bring-up gates, in order
@@ -79,4 +79,14 @@ Each row is a gate for the next one, as in docs/13.
 | K2 | browse the stick, `1` loads into deck 1, `space` plays: the waveform moves (silently) | **pass, 2026-10-13** (owner: playing, no audio as expected, waveforms move and are fully functional) |
 | S10.x | only if the monitor is not 1280×800: the UI scales correctly | TODO / n/a |
 | S11 | boot time with the boot trim | **measured 2026-10-13** (`boot-trim.sh report`, one `boot_id`, monotonic s): kernel 1.739, boot-fw 3.839, sysinit 5.043, basic 5.047, **rblive4 5.075**, launcher 5.124, fix-dev 6.860, rbp-launch 8.442, **rbp-ready 9.318**, multi-user 9.409, network 9.289, usb-watch 10.336, display-w 11.345, wait-online 15.280, net-online 15.281; `reloads 4`, `cloud-init enabled`, `apt-daily no`. For scale: the Pi 4's best was rbp-ready 17.930 (docs/13 S11.4), there with cloud-init disabled. Here the trim's cloud-init item did not apply (its network pre-flight refused, so the network stays cloud-init's), which keeps `wait-online` on the boot but not on rbp's path |
-| Soak | ≥ 1 h playing silently with some browsing: `rbp` up, `get_throttled` = `0x0`, no `crash.log` entries | TODO: unverified |
+| Soak | ≥ 1 h playing silently with some browsing: `rbp` up, `get_throttled` = `0x0`, no `crash.log` entries | **pass, 2026-10-13** (16 bpp): a loop played ~1 h (owner: UI clean, normal behaviour). At 12:03: rbp still pid 2091 since 10:28:18, `NRestarts=0`, no `/tmp/crash.log`, `dmesg` oops count 0; healthwatch every 15 s through the run: `thr=0x0`, `kerr=0`, load ≈ 0.3, 3.5 GB free |
+
+## Phase 1 exit (2026-10-13)
+
+Every Phase 1 criterion is met on the Pi 5 with no controller attached, at 16 bpp:
+the UI fills the HDMI screen (S2.1), the mouse moves the pointer and clicks land
+where it is (S3.3), the keyboard browses (K1), a rekordbox stick is detected and a
+track loads and plays silently (S6.1, K2), and a 1 h soak shows no `rbp` exit and
+`throttled=0x0` (Soak). The one known gap is cosmetic: at 16 bpp a few pixels at
+the right edge of the waveform strip draw faint (A18).
+
