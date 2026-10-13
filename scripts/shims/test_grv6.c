@@ -547,12 +547,10 @@ static void check_leds(void)
      CHECK(l->pad_ch == 7 && l->pad_ch2 == 9,
            "pad LEDs are on ch 7 / 9 (measured), not %d / %d",
            l->pad_ch, l->pad_ch2);
-     CHECK(l->n_pad_base[0] == 0 && l->n_pad_base[3] == 32,
-           "HOT CUE / BEAT JUMP pad bases are 0 / 32 (seen lit), not %d / %d",
-           l->n_pad_base[0], l->n_pad_base[3]);
-     CHECK(l->n_pad_base[1] == -1 && l->n_pad_base[2] == -1,
-           "AUTO BEAT LOOP / SLIP BEAT LOOP pad bases are unmeasured (-1), not %d / %d",
-           l->n_pad_base[1], l->n_pad_base[2]);
+     CHECK(l->n_pad_base[0] == 0 && l->n_pad_base[1] == 96 &&
+           l->n_pad_base[2] == 48 && l->n_pad_base[3] == 32,
+           "pad bases by rbp mode are 0/96/48/32 (all seen lit), not %d/%d/%d/%d",
+           l->n_pad_base[0], l->n_pad_base[1], l->n_pad_base[2], l->n_pad_base[3]);
      CHECK(l->pad_enc == LED_ENC_NONE,
            "the pads are on/off (blue at 127 only), not encoding %d", l->pad_enc);
      CHECK(l->strip_ch_first == 0 && l->strip_count == 2 && l->n_strip_cue == 84,

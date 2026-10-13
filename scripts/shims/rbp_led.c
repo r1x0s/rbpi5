@@ -489,7 +489,6 @@ static void led_transport_update(void)
           return;
      }
      for (i = 0; i < 2; i++) {
-          unsigned int ch = (unsigned int)i + 1;
           int playing = ((int (*)(void *, int))PE_ISPLAYING)(pe, i) != 0;
           int loaded  = ((int (*)(void *, int))PE_ISLOADED)(pe, i) != 0;
           int sync    = ((int (*)(void *, int))PE_ISSYNCON)(pe, i) != 0;
@@ -502,7 +501,12 @@ static void led_transport_update(void)
                bits |= RBP_TRANSPORT_SYNC;
           if (loaded && !playing)
                bits |= RBP_TRANSPORT_CUE;
-          if (playing || (loaded && led_blink_for(LEDSTAT_PLAY, ch)))
+          /* ONE cadence for both decks' PLAY: deck 1's period (ch 1), not each
+           * deck's own. rbp asks for 500 ms on deck 1 and 250 ms on deck 2
+           * (measured 2026-10-06, see led_blink_for), and on the GRV6 that read
+           * as "deck 2's PLAY blinks faster" (owner, 2026-10-13, C-044, D28).
+           * The phase is the clock's, so one period also keeps the two in step. */
+          if (playing || (loaded && led_blink_for(LEDSTAT_PLAY, 1)))
                bits |= RBP_TRANSPORT_PLAY;
           rbp_transport_set(i, bits);
      }

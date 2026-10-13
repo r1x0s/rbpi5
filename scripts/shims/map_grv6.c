@@ -125,15 +125,15 @@
 
 /* The pads' note bases (pad p = base + p). The unit re-addresses its eight pads
  * when a mode button is pressed. MEASURED on deck 1: HOT CUE 0, STEMS 16,
- * BEAT JUMP 32, SAMPLER 48. BEAT LOOP's base is NOT measured on this unit: 96
- * is the FLX4's (KEYBOARD 64, PAD FX 80, BEAT LOOP 96, KEY SHIFT 112), and the
- * GRV6 has matched the FLX4 on every pad number measured so far.
- * TODO: unverified -- one press of SHIFT+BEAT JUMP and a pad settles it. */
+ * BEAT JUMP 32, SAMPLER 48. BEAT LOOP's base 96 is the FLX4's (KEYBOARD 64,
+ * PAD FX 80, BEAT LOOP 96, KEY SHIFT 112); on this unit its LED lit at 7/96 in
+ * BEAT LOOP mode (C-044) and the pads acted in that mode in G5, which is the
+ * input base by the LED rule -- the capture itself never reached it. */
 #define PAD_BASE_HOT    0
 #define PAD_BASE_STEMS  16   /* unbound: STEMS puts rbp in no mode */
 #define PAD_BASE_JUMP   32
 #define PAD_BASE_SMPL   48
-#define PAD_BASE_BLOOP  96   /* expected, see above */
+#define PAD_BASE_BLOOP  96   /* its LED lit at 7/96 in BEAT LOOP mode (C-044) */
 
 /* ---- mixer / browse (ch 6) ------------------------------------------------ */
 #define N_MASTER_CUE   99
@@ -936,10 +936,9 @@ static void grv6_event(const struct snd_seq_event *ev)
  *   DISCOVER, the SHIFT pad channel (8). The jogs show a spinning line of their
  *   own and nothing from the host (54).
  *
- * Not measured, so -1 rather than guessed: the pad LED base in SAMPLER (rbp's
- * SLIP BEAT LOOP, mode 2; its INPUT base is 48) and in SHIFT + BEAT JUMP = BEAT
- * LOOP (rbp's AUTO BEAT LOOP, mode 1; input base 96, itself expected). With -1
- * the pads stay dark in those two modes (rbp_led.c skips a -1 base, C-043). */
+ * The pad bases of the other two modes were probed afterwards (C-044): 7/48 lit
+ * pad 1 in SAMPLER (rbp's SLIP BEAT LOOP) and 7/96 lit it in SHIFT + BEAT JUMP =
+ * BEAT LOOP (rbp's AUTO BEAT LOOP), so all four bases are seen. */
 static const struct led_notes grv6_leds = {
      .deck_ch = 0,             /* MEASURED: PLAY/SYNC lit on ch 0 and ch 1 */
      .n_sync = 88,             /* MEASURED: white */
@@ -958,9 +957,11 @@ static const struct led_notes grv6_leds = {
 
      .pad_ch = 7,              /* MEASURED: 7/0 and 7/7 lit deck 1 pads 1, 8 */
      .pad_ch2 = 9,             /* MEASURED: 9/0 lit deck 2 pad 1 */
-     .n_pad_base = { 0, -1, -1, 32 },   /* rbp modes HOT CUE / AUTO BEAT LOOP /
-                                         * SLIP BEAT LOOP / BEAT JUMP: 0 and 32
-                                         * seen, the middle two not measured */
+     .n_pad_base = { 0, 96, 48, 32 },   /* rbp modes HOT CUE / AUTO BEAT LOOP /
+                                         * SLIP BEAT LOOP / BEAT JUMP, i.e. the
+                                         * GRV6's HOT CUE / SHIFT+BEAT JUMP (BEAT
+                                         * LOOP) / SAMPLER / BEAT JUMP: all four
+                                         * seen lit (48 and 96: C-044) */
      .pad_enc = LED_ENC_NONE,  /* MEASURED: blue at 127 only, 1..120 dark */
 
      .strip_ch_first = 0,      /* MEASURED: 84/0 = CH1 CUE, 84/1 = CH2 CUE */
