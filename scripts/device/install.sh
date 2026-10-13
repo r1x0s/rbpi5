@@ -59,6 +59,22 @@ say "kernel: $(uname -m) $(uname -r); userland: $(getconf LONG_BIT 2>/dev/null |
   A 64-bit kernel with a 32-bit userland is the supported arrangement; the chroot
   test below is what proves the kernel can run 32-bit ARM ELF (docs/13-raspberrypi4.md)."
 
+# The page size is the one kernel property the chroot test below can pass with
+# and still be wrong. The Pi 5 firmware prefers kernel_2712.img, which uses 16 K
+# pages; everything this tree was measured on ran 4 K (the Pi 4's kernel8.img),
+# and the 2011-era glibc 2.13 chroot, the shims' SYS_mmap2 and the fb/DRM mmap
+# arithmetic all assume it. A warning, not an error: whether a 16 K kernel breaks
+# rbp is expected, not measured, and the chroot test stays the hard gate.
+# doctor.sh section 4 reports the same thing as a FAIL with the same fix.
+_pagesize=$(getconf PAGESIZE 2>/dev/null || echo '?')
+if [ "$_pagesize" != "4096" ]; then
+  warn "page size is $_pagesize, not 4096. This tree has only ever run on a 4 K-page
+  kernel. On a Raspberry Pi 5, put these two lines in /boot/firmware/config.txt
+  ABOVE the final [all] section, then reboot:
+      [pi5]
+      kernel=kernel8.img"
+fi
+
 # --- unpack -----------------------------------------------------------------
 
 say "deploying to $DEPLOY"
