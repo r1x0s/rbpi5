@@ -7,8 +7,10 @@ the unit unless it says otherwise. No published MIDI list was found for the GRV6
 there is nothing to cross-check against except the FLX4, whose layout it largely
 shares.
 
-**Status: inventory only.** No map (`map_grv6.c`) exists yet. This is the table it
-will be written from.
+**Status: mapped, not yet run on the unit.** `scripts/shims/map_grv6.c` is written
+from the tables below and passes its fixture test (`test_grv6`); selecting it on the
+Pi (`RB_MIDI_MAP=grv6`) and checking each control there is the next step. See
+[The map](#the-map-map_grv6c) for what it binds and why.
 
 ## Source of the numbers
 
@@ -178,6 +180,41 @@ with SHIFT held: the FLX4's SHIFT + mode notes exactly). rbp has four pad modes:
 AUTO BEAT LOOP, SLIP BEAT LOOP, BEAT JUMP (docs/15). By name, HOT CUE, BEAT JUMP and
 BEAT LOOP have rbp equivalents; STEMS, SAMPLER, KEYBOARD, PAD FX and KEY SHIFT do
 not.
+
+## The map (`map_grv6.c`)
+
+Selected with `RB_MIDI_MAP=grv6`, which also gives the audio shim the `DDJGRV6`
+card and the MIDI side the `GRV6` port name (the `grv6` row of
+`scripts/shims/controllers.c`). The FLX4 stays the table's default row.
+
+| Control | Goes to | Note |
+|---|---|---|
+| decks 1/2 (ch 0/1) | rbp players 1/2 | PLAY, CUE, loop IN/OUT, 4 BEAT/EXIT, jog touch, channel strip: as the FLX4 map |
+| decks 3/4 (ch 2/3) | nothing, logged | rbp has two players (D6) |
+| BEAT SYNC | SYNC, once per press | no long press: the GRV6 has no separate note for it |
+| MASTER TEMPO | rbp's key lock (`K_MT`) | name match |
+| KEY SYNC, MEMORY, CUE/LOOP CALL < > | nothing, logged | rbp has no KEY SYNC; the others' rbp keycodes are unidentified |
+| pad modes | HOT CUE → HOT CUE, BEAT JUMP → BEAT JUMP, SHIFT+BEAT LOOP → AUTO BEAT LOOP, SAMPLER → SLIP BEAT LOOP | by name (D19); STEMS, KEYBOARD, PAD FX, KEY SHIFT reach nothing |
+| pads | rbp's pads 1–8 | bases 0, 32, 48 measured; BEAT LOOP's 96 expected (the FLX4's) |
+| SHIFT + HOT CUE pad | deletes that hot cue | as the FLX4 map |
+| Beat FX knob | rbp's effect, absolute | 11 by name; LC ECHO → PING PONG, MOBIUS saw → SLIP ROLL, MOBIUS tri → VINYL BRAKE (D18) |
+| FX channel 1 / 2 / MST | Beat FX target deck 1 / deck 2 / MASTER | Note On only; 3, 4, SP change nothing (D17) |
+| browse turn, push, SHIFT+push | list step, select, SOURCE | as the FLX4 map |
+| browse tilt UP / DOWN / LEFT / RIGHT | step up / step down / BACK / select | the keyboard map's arrows, BACKSPACE and ENTER |
+| BACK | BACK | |
+| LOAD, SHIFT+LOAD 1 / 2 | LOAD, TRACK FILTER / SHORTCUT | the FLX4 map's actions on the GRV6's notes |
+| VIEW, PREVIEW, DISCOVER | nothing, logged | no rbp equivalent |
+| MASTER LEVEL | the HDMI mirror's level only | as the FLX4 map |
+| BOOTH LEVEL | nothing | the controller's own booth output (D20) |
+| MASTER CUE | the controller only | done in hardware (measured), so rbp's own master cue is held off; `RB_MASTER_CUE_HW=0` gives the FLX4 map's behaviour |
+| LEDs, meters | nothing | none measured yet, so the map declares no LED table |
+
+Two numbers are new to the GRV6. The jog's default `RB_JOG_PPR` is **6449**, and
+its speed is reported once per **8 ms window** (`RB_JOG_WINDOW_MS`; 0 = every
+message, as on the FLX4) rather than per message, because the GRV6 sends about
+1 800 messages per turn and a per-message speed on a millisecond clock jumps by
+2× between neighbours. Its position field is sent in the FLX4's units (720 per
+turn), the units rbp has been seen to accept.
 
 ## Not measured yet
 
