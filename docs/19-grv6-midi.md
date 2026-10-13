@@ -209,7 +209,7 @@ card and the MIDI side the `GRV6` port name (the `grv6` row of
 | MASTER LEVEL | the HDMI mirror's level only | as the FLX4 map |
 | BOOTH LEVEL | nothing | the controller's own booth output (D20) |
 | MASTER CUE | the controller only | done in hardware (measured), so rbp's own master cue is held off; `RB_MASTER_CUE_HW=0` gives the FLX4 map's behaviour |
-| LEDs, meters | nothing | none measured yet, so the map declares no LED table |
+| LEDs, meters | PLAY, CUE, BEAT SYNC, LOOP IN/OUT, the pads (HOT CUE and BEAT JUMP modes), CH1/CH2 CUE, Beat FX ON/OFF, the channel meters | measured 2026-10-13 with `tools/grv6-ledprobe.sh`: every LED that lit is its control's own input note on its own channel (PLAY 11, CUE 12, SYNC 88, IN 16, OUT 17 on ch 0/1; pads ch 7/9, bases 0 and 32; CH CUE 84 on ch 0/1; FX ON/OFF 71 on ch 4; meter CC 2 on ch 0). Pads are blue only, lit at velocity 127 and dark at 1–120. The GRV6 lights MASTER TEMPO, DECK, the pad mode buttons, MASTER CUE, the FX channel buttons and LOAD **by itself**, so the map leaves those alone. No light: 4 BEAT/EXIT, MEMORY, CALL < >, BACK, VIEW, DISCOVER. Not yet measured: the pad LEDs in SAMPLER and BEAT LOOP modes (dark until they are) |
 
 Two numbers are new to the GRV6. The jog's default `RB_JOG_PPR` is **6449**, and
 its speed is reported once per **8 ms window** (`RB_JOG_WINDOW_MS`; 0 = every

@@ -909,13 +909,89 @@ static void grv6_event(const struct snd_seq_event *ev)
      }
 }
 
-/* No LED table yet: not one LED or meter of the GRV6 has been measured, and
- * map_flx4.c's header says why a guessed note is worse than a dark LED (it can
- * land on another control). NULL is ctrl_map.h's "this surface has no LEDs to
- * drive": rbp_led.c sends nothing and rbp_vu.c installs no meter hook, while
- * still enabling rbp's master cue and seeding the faders -- the first of which
- * grv6_master_cue_hold() then undoes. The LED probe (docs/15's procedure, run
- * on this unit) is what replaces this NULL with a table. */
+/* THE LED TABLE, MEASURED ON THE UNIT 2026-10-13 (C-042's probe, G8): each
+ * candidate was streamed from the host (Note On every 100 ms for 3 s, off =
+ * velocity 0) and the owner read the panel. The rule the FLX4 taught held again:
+ * every LED that lit is its control's own INPUT note on its own input channel.
+ *
+ * What lit from the host, and so what this table drives:
+ *   deck 1 ch 0 / deck 2 ch 1:  PLAY 11 (green), CUE 12 (orange), BEAT SYNC 88
+ *     (white), LOOP IN 16 / OUT 17 (orange); deck 2 measured on PLAY and SYNC,
+ *     the rest by the same deck_ch + 1 rule. (KEY SYNC 101 lit blue too, but
+ *     rbp has no key-sync state to mirror.)
+ *   pads: ch 7 (deck 1) and ch 9 (deck 2), notes base + 0..7, base 0 in HOT CUE
+ *     and 32 in BEAT JUMP (both seen); BLUE ONLY, and only at velocity 127 --
+ *     every velocity from 1 to 120 left the pad dark -- so they are on/off.
+ *   CH1 / CH2 CUE: note 84 on ch 0 / 1 (orange).
+ *   Beat FX ON/OFF: note 71 on ch 4 (blue, blinking).
+ *   CH1 meter: CC 2 on ch 0 moved the meter bottom -> top -> bottom.
+ *
+ * What the GRV6 LIGHTS BY ITSELF, with no host message (owner, same run), and
+ * which this table therefore must NOT drive -- two writers would fight:
+ *   MASTER TEMPO (red), the DECK 1/3 and 2/4 buttons, the pad mode buttons,
+ *   MASTER CUE (whose mix is the controller's too, D21), the FX channel select
+ *   buttons, the LOAD buttons. 26, 114, 27/30/32/34, 99/6, 16-22/4 and 70/71/6
+ *   were each sent from the host and none lit.
+ * No light at all: 4 BEAT/EXIT (77), MEMORY (61), CUE/LOOP CALL < >, BACK, VIEW,
+ *   DISCOVER, the SHIFT pad channel (8). The jogs show a spinning line of their
+ *   own and nothing from the host (54).
+ *
+ * Not measured, so -1 rather than guessed: the pad LED base in SAMPLER (rbp's
+ * SLIP BEAT LOOP, mode 2; its INPUT base is 48) and in SHIFT + BEAT JUMP = BEAT
+ * LOOP (rbp's AUTO BEAT LOOP, mode 1; input base 96, itself expected). With -1
+ * the pads stay dark in those two modes (rbp_led.c skips a -1 base, C-043). */
+static const struct led_notes grv6_leds = {
+     .deck_ch = 0,             /* MEASURED: PLAY/SYNC lit on ch 0 and ch 1 */
+     .n_sync = 88,             /* MEASURED: white */
+     .n_cue = 12,              /* MEASURED: orange (the deck CUE) */
+     .n_play = 11,             /* MEASURED: green */
+     .n_keylock = -1,          /* MASTER TEMPO is lit by the GRV6 itself; 26/0
+                                * from the host lit nothing */
+     .n_vinyl = -1,            /* no such button */
+     .n_slip = -1,             /* no such button */
+     .n_loopin = 16,           /* MEASURED: orange */
+     .n_loopout = 17,          /* MEASURED: orange */
+     .n_autoloop = -1,         /* MEASURED: 77/0 lit nothing; no light */
+
+     .n_mode = { -1, -1, -1, -1 },   /* the GRV6 lights its own mode buttons;
+                                      * 27/30/32/34 from the host: nothing */
+
+     .pad_ch = 7,              /* MEASURED: 7/0 and 7/7 lit deck 1 pads 1, 8 */
+     .pad_ch2 = 9,             /* MEASURED: 9/0 lit deck 2 pad 1 */
+     .n_pad_base = { 0, -1, -1, 32 },   /* rbp modes HOT CUE / AUTO BEAT LOOP /
+                                         * SLIP BEAT LOOP / BEAT JUMP: 0 and 32
+                                         * seen, the middle two not measured */
+     .pad_enc = LED_ENC_NONE,  /* MEASURED: blue at 127 only, 1..120 dark */
+
+     .strip_ch_first = 0,      /* MEASURED: 84/0 = CH1 CUE, 84/1 = CH2 CUE */
+     .strip_count = 2,
+     .n_strip_cue = 84,
+
+     .master_ch_first = -1,    /* MASTER CUE is the GRV6's own (D21); 99/6 from */
+     .master_ch_count = 0,     /* the host lit nothing */
+     .n_master_cue = -1,
+
+     .fx_ch = 4,               /* MEASURED: 71/4 lit Beat FX ON/OFF */
+     .n_fx = {
+          [LED_FX_BFX_ONOFF]   = 71,
+          [LED_FX_CFX_FILTER]  = -1,   /* no CFX buttons: one CFX knob per strip */
+          [LED_FX_CFX_DUBECHO] = -1,
+          [LED_FX_CFX_NOISE]   = -1,
+          [LED_FX_CFX_SWEEP]   = -1,
+     },
+
+     .meter_ch_first = 0,      /* MEASURED for CH1 (CC 2 on ch 0 moved it); CH2
+                                * on ch 1 is EXPECTED by the deck_ch rule */
+     .n_meter_cc = 2,
+     .meter_enc = METER_ENC_FLX4_LEVEL,   /* EXPECTED: the probe's 0..127 ramp
+                                * spanned the meter; the FLX4's 0x26..0x7F scale
+                                * is assumed, its bottom threshold unmeasured */
+     .meter_pre_fader = 1,     /* EXPECTED (the FLX4's); unmeasured here */
+     .meter_master_ch = -1,    /* no master meter probed */
+     .n_meter_master_l = -1,
+     .n_meter_master_r = -1,
+};
+
 const struct ctrl_map map_grv6 = {
      "grv6",
      grv6_build,
@@ -924,5 +1000,5 @@ const struct ctrl_map map_grv6 = {
      grv6_tick,
      NULL,   /* devices(): a MIDI surface */
      NULL,   /* input(): ditto */
-     NULL,   /* leds: none measured yet */
+     &grv6_leds,
 };

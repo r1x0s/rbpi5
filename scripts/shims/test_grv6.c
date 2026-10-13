@@ -494,6 +494,106 @@ static void check_jog(void)
      CHECK(sent_n == from, "deck 3's jog produced %d keycodes", sent_n - from);
 }
 
+/* ---- the LED table (C-043, measured with C-042's probe 2026-10-13) --------- */
+
+/* The (channel, note) pairs the GRV6 lights BY ITSELF. Sending to any of them
+ * from the host would make two writers fight over one LED, so the table must
+ * never address one. Each was also sent from the host in the probe and lit
+ * nothing, which is the same fact seen from the other side. */
+static int self_lit(int ch, int note)
+{
+     if ((ch == 0 || ch == 1) &&
+         (note == 26 || note == 114 || note == 27 || note == 30 ||
+          note == 32 || note == 34))
+          return 1;                     /* MASTER TEMPO, DECK, pad mode buttons */
+     if (ch == 6 && (note == 99 || note == 70 || note == 71))
+          return 1;                     /* MASTER CUE, LOAD 1 / 2 */
+     if (ch == 4 && note >= 16 && note <= 22)
+          return 1;                     /* the FX channel select buttons */
+     return 0;
+}
+
+static void check_self_lit(const char *what, int ch, int note)
+{
+     if (ch < 0 || note < 0)
+          return;
+     CHECK(!self_lit(ch, note),
+           "the LED table drives %s at ch %d note %d, which the GRV6 lights by itself",
+           what, ch, note);
+}
+
+static void check_leds(void)
+{
+     const struct led_notes *l = map_grv6.leds;
+
+     CHECK(l != NULL, "the GRV6 must declare its measured LED table");
+     if (!l)
+          return;
+     CHECK(l->deck_ch == 0, "deck LEDs start on ch 0, not %d", l->deck_ch);
+     CHECK(l->n_play == 11 && l->n_cue == 12 && l->n_sync == 88,
+           "PLAY/CUE/SYNC LEDs are 11/12/88 (measured), not %d/%d/%d",
+           l->n_play, l->n_cue, l->n_sync);
+     CHECK(l->n_loopin == 16 && l->n_loopout == 17,
+           "LOOP IN/OUT LEDs are 16/17 (measured), not %d/%d",
+           l->n_loopin, l->n_loopout);
+     CHECK(l->n_keylock == -1 && l->n_autoloop == -1 &&
+           l->n_vinyl == -1 && l->n_slip == -1,
+           "keylock/autoloop/vinyl/slip have no host LED (%d/%d/%d/%d)",
+           l->n_keylock, l->n_autoloop, l->n_vinyl, l->n_slip);
+     for (int m = 0; m < 4; m++)
+          CHECK(l->n_mode[m] == -1,
+                "pad mode %d: the GRV6 lights its own mode buttons, not %d",
+                m, l->n_mode[m]);
+     CHECK(l->pad_ch == 7 && l->pad_ch2 == 9,
+           "pad LEDs are on ch 7 / 9 (measured), not %d / %d",
+           l->pad_ch, l->pad_ch2);
+     CHECK(l->n_pad_base[0] == 0 && l->n_pad_base[3] == 32,
+           "HOT CUE / BEAT JUMP pad bases are 0 / 32 (seen lit), not %d / %d",
+           l->n_pad_base[0], l->n_pad_base[3]);
+     CHECK(l->n_pad_base[1] == -1 && l->n_pad_base[2] == -1,
+           "AUTO BEAT LOOP / SLIP BEAT LOOP pad bases are unmeasured (-1), not %d / %d",
+           l->n_pad_base[1], l->n_pad_base[2]);
+     CHECK(l->pad_enc == LED_ENC_NONE,
+           "the pads are on/off (blue at 127 only), not encoding %d", l->pad_enc);
+     CHECK(l->strip_ch_first == 0 && l->strip_count == 2 && l->n_strip_cue == 84,
+           "CH CUE LEDs are 84 on ch 0/1 (measured)");
+     CHECK(l->n_master_cue == -1 && l->master_ch_count == 0,
+           "MASTER CUE is the GRV6's own light (D21), not note %d x %d",
+           l->n_master_cue, l->master_ch_count);
+     CHECK(l->fx_ch == 4 && l->n_fx[LED_FX_BFX_ONOFF] == 71,
+           "Beat FX ON/OFF is 71 on ch 4 (measured), not %d on %d",
+           l->n_fx[LED_FX_BFX_ONOFF], l->fx_ch);
+     for (int g = LED_FX_CFX_FILTER; g < LED_FX_COUNT; g++)
+          CHECK(l->n_fx[g] == -1, "CFX LED %d: no such button, not %d", g, l->n_fx[g]);
+     CHECK(l->meter_ch_first == 0 && l->n_meter_cc == 2,
+           "the channel meter is CC 2 on the deck channel (CH1 measured)");
+     CHECK(l->meter_master_ch == -1, "no master meter was probed");
+
+     /* Nothing the table can send may land on a self-lit LED. */
+     for (int d = 0; d < 2; d++) {
+          int ch = l->deck_ch + d;
+          check_self_lit("PLAY", ch, l->n_play);
+          check_self_lit("CUE", ch, l->n_cue);
+          check_self_lit("SYNC", ch, l->n_sync);
+          check_self_lit("LOOP IN", ch, l->n_loopin);
+          check_self_lit("LOOP OUT", ch, l->n_loopout);
+          check_self_lit("KEY LOCK", ch, l->n_keylock);
+          check_self_lit("AUTO LOOP", ch, l->n_autoloop);
+          for (int m = 0; m < 4; m++)
+               check_self_lit("a mode button", ch, l->n_mode[m]);
+          for (int m = 0; m < 4; m++)
+               for (int p = 0; l->n_pad_base[m] >= 0 && p < 8; p++)
+                    check_self_lit("a pad", d ? l->pad_ch2 : l->pad_ch,
+                                   l->n_pad_base[m] + p);
+     }
+     for (int k = 0; k < l->strip_count; k++)
+          check_self_lit("a CH CUE", l->strip_ch_first + k, l->n_strip_cue);
+     for (int k = 0; k < l->master_ch_count; k++)
+          check_self_lit("MASTER CUE", l->master_ch_first + k, l->n_master_cue);
+     for (int g = 0; g < LED_FX_COUNT; g++)
+          check_self_lit("an FX LED", l->fx_ch, l->n_fx[g]);
+}
+
 int main(void)
 {
      static const char *const names[] = {
@@ -518,8 +618,7 @@ int main(void)
      CHECK(abs_map_n == 16,
            "the map built %d absolute rows, expected 16 (2 x 5 + 5 + 1)",
            abs_map_n);
-     CHECK(map_grv6.leds == NULL,
-           "the GRV6 must declare no LED table until one is measured");
+     check_leds();
      CHECK(strcmp(map_grv6.name, "grv6") == 0, "the map is named '%s'",
            map_grv6.name);
 

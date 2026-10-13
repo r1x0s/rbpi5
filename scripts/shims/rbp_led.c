@@ -750,7 +750,12 @@ static void led_refresh(void)
                          led_pad_base[i] = base;
                     }
 
-                    for (int p = 0; p < LED_PAD_COUNT; p++) {
+                    /* `base < 0` is the table's "this mode has no pad LEDs"
+                     * (ctrl_map.h: -1 = none). The clear above has already
+                     * darkened the previous mode's notes; without this guard
+                     * the loop would go on to send `-1 + p`, i.e. notes 0..6 --
+                     * another mode's pads (C-043). */
+                    for (int p = 0; base >= 0 && p < LED_PAD_COUNT; p++) {
                          unsigned char rgb[3];
                          int pnote = base + p;
                          int st = ledstat_state(LED_PAD_FIRST + (unsigned)p,
