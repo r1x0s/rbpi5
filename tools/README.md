@@ -12,6 +12,7 @@ Two kinds of tool live here:
 | [`pi5-survey.sh`](pi5-survey.sh) | **the Pi** (as root) | shell | read-only inventory of every board fact the scripts and shims hardcode (page size, DRM card order, connectors, fb, ALSA ids, USB topology, PSU current), for bringing up a new board such as the Pi 5; runs `fbdump` too when it is beside it |
 | [`evdevdump.c`](evdevdump.c) | **the Pi** | C | enumerate input devices; find the pointer and its axis algebra |
 | [`pcmprobe.c`](pcmprobe.c) | **inside the chroot on the Pi**, or a workstation under `qemu-arm` | C | name ALSA's `snd_pcm_format_t` values, list a card's accepted formats by name, and run the whole open→configure→write sequence against a named device, access and channel count |
+| [`grv6-capture.sh`](grv6-capture.sh) | **the Pi** | shell | guided DDJ-GRV6 MIDI capture: prompts for one control at a time and appends its raw `aseqdump` output, labelled, to `~/grv6-dump.txt`; one section per argument (`idle deck1 decks mixer fx pads browse shift`) |
 | [`aseqdump2dump.py`](aseqdump2dump.py) | the Pi or a workstation | Python | turn an `aseqdump` capture into a replayable MIDI dump, and print the inventory and arithmetic a controller map is written from |
 | [`pi-bringup/`](pi-bringup/) | **the Pi** | Python / shell | drive the input path on the unit: a virtual keyboard with a chosen hold time, a raw evdev reader, a state probe, a key-and-capture harness |
 
