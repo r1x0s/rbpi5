@@ -59,6 +59,10 @@ target/
 Thumbs.db
 *.swp
 *~
+# NFS "silly rename" placeholders: a file deleted or replaced while still open
+# over NFS (e.g. the checkout on an OrbStack machine, edited from the Mac)
+# lingers as .nfsXXXX until it is closed. They are full copies of the old file.
+.nfs*
 
 # built diagnostic binaries
 /tools/touchdump
