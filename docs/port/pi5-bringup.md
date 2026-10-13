@@ -23,7 +23,7 @@ S5.x, S8, S9) belong to Phase 2.
 | `getconf PAGESIZE` | **4096** |
 | Monitor | model: TODO. EDID: native **1920×1080@60** on `HDMI-A-1`; mode list 1920×1080, 1600×900, 1280×1024, 1280×720, 1024×768 (**no 1280×800**); physical 350×200 mm |
 | Pointer / keyboard | TODO (none attached during the survey: the only input nodes were `pwr_button` and the two HDMI CEC/jack devices) |
-| Deployed commit + tarball sha256 | nothing deployed yet (`/opt/rblive4` absent). Built and ready: `port/pi5` @ 8e71d73, `ac4d8d94…b881` (S0.3) |
+| Deployed commit + tarball sha256 | **`port/pi5` @ 09983c8** (16 bpp default, C-019), tarball sha256 `1c58b8ca587b2d94c0ae2775f34b4afe20f3f5765681f40600a6301abe41ab3e`, installed 2026-10-13 ~12:20 onto a stopped unit; no deploy-root overrides; `rb.local.conf`: `RB_MIDI_MAP=kbd`, `RB_EVDEV_MAP=kbd`, `RB_POINT_KIND=auto`, `RB_KNOB_VERBOSE=0`. Launcher: `depth: player and lie both 16 bpp`, no `override:` line; `PRESENT:` as S2.2; oops count 0. (S0–Soak were measured on the earlier 8e71d73 tarball + the 16 bpp override, which is the same player and shims.) |
 
 The raw inventory is `tools/pi5-survey.sh`'s output, committed beside this file
 as [`pi5-survey.txt`](pi5-survey.txt) (taken 2026-10-13 07:56 UTC, before any
