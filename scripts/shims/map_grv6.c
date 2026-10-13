@@ -53,10 +53,16 @@
  *   5. New controls: BACK, VIEW (-> BROWSE), PREVIEW, DISCOVER (-> SOURCE)
  *      and a four-way browse tilt;
  *      KEY SYNC, MASTER TEMPO and MEMORY on each deck; BOOTH LEVEL.
- *   6. MASTER CUE IS DONE IN THE CONTROLLER. Measured during the audio check:
- *      pressing it mixes master into the headphones with no host involved. So
- *      this map does not toggle rbp's own master cue from the button, and holds
- *      rbp's off -- see grv6_master_cue_hold() for why both halves are needed.
+ *   6. THE HEADPHONE MIX IS DONE IN THE CONTROLLER. Measured during the audio
+ *      check: MASTER CUE mixes master into the headphones with no host
+ *      involved. The HEADPHONES MIX knob blends in hardware too and LEVEL is
+ *      the jack's own volume -- Algoriddim's support says so of the GRV6 ("mixes
+ *      audio signals inside the hardware"); EXPECTED here, TODO: verify on the
+ *      unit (C-046 says how). So rbp must hand over a PURE
+ *      cue bus on channels 2/3 and nothing else: this map does not toggle
+ *      rbp's master cue from the button and holds it off, and it holds rbp's
+ *      own headphone mix at CUE and its level at unity instead of forwarding
+ *      the two knobs -- see grv6_master_cue_hold() and grv6_hp_hold().
  *   7. The jog has ~9x the FLX4's resolution (6448.8 counts/rev against 720),
  *      and sends ~3.5 counts per message, which changes how its speed has to be
  *      measured -- see grv6_jog().
@@ -221,7 +227,8 @@ static int jog_window_ms = JOG_WINDOW_MS_DEFAULT;
 static int jog_verbose = 0;
 static int tempo_verbose = 0;
 static int tempo_rev = 0;
-static int master_cue_hw = 1;    /* MASTER_CUE_HW: 1 = the controller owns it */
+static int master_cue_hw = 1;    /* MASTER_CUE_HW: 1 = the controller owns the
+                                  * headphone mix (MASTER CUE, MIX, LEVEL) */
 
 /* rbp's effect position for each Beat FX knob note, 32..45 in order (D18).
  * rbp's positions (fx_zone.c): 0 DELAY, 1 ECHO, 2 PING PONG, 3 SPIRAL, 4 HELIX,
@@ -505,6 +512,19 @@ static void grv6_cc_abs(int ch, int cc, int val)
                g_cue_mix = fval;
           } else if (key == K_HPLEVEL) {
                g_cue_gain = fval;
+          }
+          /* The two headphone knobs act on the jack inside the GRV6. Passing
+           * them to rbp as well applied each one TWICE to the cue and once to
+           * the master the GRV6 mixes in -- the cue drowned under the master
+           * (owner, 2026-10-13 20:55). Under MASTER_CUE_HW=1 rbp's are held by
+           * grv6_hp_hold() instead; g_cue_mix/g_cue_gain above still follow
+           * the knobs, for the log. */
+          if (master_cue_hw && (key == K_HPMIX || key == K_HPLEVEL)) {
+               if (verbose)
+                    klog("knobshim2: headphone %s %.3f: the GRV6's own "
+                         "(MASTER_CUE_HW=1), not sent to rbp\n",
+                         key == K_HPMIX ? "MIX" : "LEVEL", (double)fval);
+               return;
           }
           send_rx_key_f(key, OP_VALUE, sch, v, fval);
           if (verbose)
@@ -831,9 +851,12 @@ static void grv6_startup(void)
 
      send_rx_key_f(K_MASTERLVL, OP_VALUE, CH_GLOBAL, 1023, 1.0f);
      klog("knobshim2: master level set to unity\n");
-     klog("knobshim2: GRV6: MASTER CUE %s\n", master_cue_hw
-          ? "is the controller's (MASTER_CUE_HW=1); rbp's is held off"
-          : "toggles rbp's own master cue (MASTER_CUE_HW=0)");
+     klog("knobshim2: GRV6: %s\n", master_cue_hw
+          ? "the headphone mix is the controller's (MASTER_CUE_HW=1): rbp's "
+            "master cue held off, its headphone MIX held at CUE and LEVEL at "
+            "unity, so channels 2/3 carry the cue bus alone"
+          : "MASTER CUE toggles rbp's own master cue and the headphone MIX/LEVEL "
+            "knobs reach rbp (MASTER_CUE_HW=0)");
 }
 
 /* Hold rbp's own master cue OFF while the controller owns MASTER CUE.
@@ -863,10 +886,51 @@ static void grv6_master_cue_hold(void)
      }
 }
 
+/* Hold rbp's headphone MIX at CUE and its LEVEL at unity while the controller
+ * owns the headphone mix, so rbp's phone stream is the cue bus at full level and
+ * the GRV6's own MIX and LEVEL are the only ones the ear hears.
+ *
+ * Why: the GRV6 blends master (USB 0/1) into the headphones (USB 2/3) in
+ * hardware, under its MIX knob, and sets the jack's volume with its LEVEL knob.
+ * Forwarded to rbp, the same two knobs ALSO scaled rbp's phone stream -- so the
+ * cue passed through the MIX law twice and the LEVEL twice, while the master the
+ * GRV6 mixes in passed through each once. With MIX at the middle and LEVEL
+ * anywhere short of full the cue was buried (owner, 2026-10-13 20:55: "I can't
+ * even hear the cue because the master is too loud").
+ *
+ * Re-sent every HP_HOLD_TICKS rather than once, for grv6_master_cue_hold()'s
+ * reason: a single write races rbp's mixer coming up, and no getter for these
+ * two values is known, so the hold is a periodic re-assert -- two keycodes every
+ * 2 s. Nothing is sent before the engine exists (me_get_master_cue() == -1).
+ *
+ * EXPECTED, not measured: that rbp's MIX value 0 is the CUE end (the knob's own
+ * direction, which the map forwarded unchanged and the owner found right at G5)
+ * and that LEVEL 1023 is unity rather than a boost. Verify by ear: with only a
+ * channel CUE on, the cue must be loud and clean with the GRV6's MIX at CUE. */
+#define HP_HOLD_TICKS 100       /* 2 s at tick_thread's 50 Hz */
+static void grv6_hp_hold(void)
+{
+     static unsigned long n;
+     static int told;
+
+     if (!master_cue_hw || me_get_master_cue() < 0)
+          return;
+     if (n++ % HP_HOLD_TICKS)
+          return;
+     send_rx_key_f(K_HPMIX, OP_VALUE, CH_GLOBAL, 0, 0.0f);
+     send_rx_key_f(K_HPLEVEL, OP_VALUE, CH_GLOBAL, 1023, 1.0f);
+     if (!told) {
+          told = 1;
+          klog("knobshim2: GRV6: rbp's headphone MIX held at CUE and LEVEL at "
+               "unity (the controller mixes the headphones)\n");
+     }
+}
+
 static void grv6_tick(void)
 {
      grv6_jog_idle();
      grv6_master_cue_hold();
+     grv6_hp_hold();
 }
 
 static void grv6_event(const struct snd_seq_event *ev)

@@ -9,7 +9,9 @@
  *   - the state the map writes that is not a keycode: the channel-CUE latch,
  *     the headphone gains, the fader inputs of the meter, the HDMI mirror gain,
  *     the SHIFT + HOT CUE deletes -- and that MASTER CUE does NOT touch rbp;
- *   - the master-cue hold in tick();
+ *   - the master-cue hold in tick(), and the headphone MIX/LEVEL hold beside it
+ *     (the knobs themselves no longer reach rbp under MASTER_CUE_HW=1, C-046);
+ *   - MASTER_CUE_HW=0, rebuilt: the knobs reach rbp again and nothing is held;
  *   - the jog, driven directly with real sleeps because its speed is measured
  *     against the clock: the sign, the windowing, the idle edge, and the
  *     position in FLX4 units (720/rev) including the step below zero.
@@ -192,8 +194,8 @@ static const struct expect expect[] = {
      { 1, K_COLOR,   OP_VALUE, 1, 516,  F516, 0 },
      { 1, K_COLOR,   OP_VALUE, 2, 1023, 1.0f, 0 },
      { 1, K_XFADER,  OP_VALUE, CH_GLOBAL, 1023, 1.0f, 0 },
-     { 1, K_HPMIX,   OP_VALUE, CH_GLOBAL, 516,  F516, 0 },
-     { 1, K_HPLEVEL, OP_VALUE, CH_GLOBAL, 0,    0.0f, 0 },
+     /* HEADPHONES MIX / LEVEL: the GRV6's own (MASTER_CUE_HW=1, C-046), so no
+      * keycode -- rbp's are held by tick() instead, see check_hp_hold() */
      /* BOOTH, MASTER LEVEL, MASTER CUE: no keycode */
      /* ---- browse ---- */
      { 0, K_SELECTOR, OP_ROTATE, CH_GLOBAL, 1,  0.0f, 0 },
@@ -377,6 +379,114 @@ static void check_master_cue_hold(void)
      map_grv6.tick();
      CHECK(master_cue_calls == before + 1,
            "tick() wrote rbp's master cue again while it was already off");
+}
+
+/* Count the K_HPMIX/K_HPLEVEL keycodes in sent[from..], checking each is the
+ * hold's value (MIX 0 = CUE, LEVEL 1023 = unity) and that they come in pairs. */
+static int hp_holds_since(int from)
+{
+     int pairs = 0;
+
+     for (int i = from; i < sent_n; i++) {
+          if (sent[i].key != K_HPMIX && sent[i].key != K_HPLEVEL)
+               continue;
+          if (sent[i].key == K_HPLEVEL) {
+               CHECK(0, "keycode %d: K_HPLEVEL without a K_HPMIX before it", i);
+               continue;
+          }
+          CHECK(sent[i].kind == 1 && sent[i].op == OP_VALUE &&
+                sent[i].ch == CH_GLOBAL && sent[i].param == 0 &&
+                sent[i].fval == 0.0f,
+                "keycode %d: K_HPMIX param %ld f %.3f, expected 0 (CUE)",
+                i, sent[i].param, (double)sent[i].fval);
+          CHECK(i + 1 < sent_n && sent[i + 1].key == K_HPLEVEL &&
+                sent[i + 1].kind == 1 && sent[i + 1].op == OP_VALUE &&
+                sent[i + 1].ch == CH_GLOBAL && sent[i + 1].param == 1023 &&
+                sent[i + 1].fval == 1.0f,
+                "keycode %d: K_HPMIX not followed by K_HPLEVEL 1023 (unity)", i);
+          pairs++;
+          i++;
+     }
+     return pairs;
+}
+
+/* tick(): rbp's headphone MIX/LEVEL held, starting with the first tick that
+ * finds the engine and then every 100 ticks (2 s at 50 Hz). check_master_cue_hold()
+ * ran just before with one engine-less tick and then two with the engine, so
+ * the first hold is already in sent[] (counter 0), counter 1 has passed, and
+ * the next hold is counter 100: 98 quiet ticks, then the 99th sends. */
+static void check_hp_hold(int from)
+{
+     int start;
+
+     CHECK(hp_holds_since(from) == 1,
+           "the first ticks with rbp's mixer sent %d MIX/LEVEL holds, expected 1",
+           hp_holds_since(from));
+
+     master_cue_state = 0;            /* the engine exists, master cue off */
+     start = sent_n;
+     for (int t = 0; t < 98; t++)
+          map_grv6.tick();
+     CHECK(hp_holds_since(start) == 0,
+           "a MIX/LEVEL hold came early (inside the 2 s period)");
+     map_grv6.tick();
+     CHECK(hp_holds_since(start) == 1,
+           "no MIX/LEVEL hold at the 100th tick");
+     start = sent_n;
+     for (int t = 0; t < 100; t++)
+          map_grv6.tick();
+     CHECK(hp_holds_since(start) == 1,
+           "%d MIX/LEVEL holds in the next 100 ticks, expected 1",
+           hp_holds_since(start));
+}
+
+/* MASTER_CUE_HW=0: the FLX4's behaviour, rebuilt from a reset table. The two
+ * knobs reach rbp again, MASTER CUE toggles rbp's own, and tick() holds
+ * nothing. Run last: it replaces the map's bindings. */
+static void check_master_cue_hw_off(void)
+{
+     struct snd_seq_event ev;
+     int start, calls;
+
+     ctrl_bindings_reset();
+     setenv("MASTER_CUE_HW", "0", 1);
+     map_grv6.build();
+     unsetenv("MASTER_CUE_HW");
+
+     start = sent_n;
+     memset(&ev, 0, sizeof ev);
+     ev.type = SNDRV_SEQ_EVENT_CONTROLLER;
+     ev.data.control.channel = 6;
+     ev.data.control.param = 12;          /* HEADPHONES MIX */
+     ev.data.control.value = 127;
+     dispatch(&ev);
+     ev.data.control.param = 13;          /* HEADPHONES LEVEL */
+     ev.data.control.value = 64;
+     dispatch(&ev);
+     CHECK(sent_n == start + 2 &&
+           sent[start].key == K_HPMIX && sent[start].param == 1023 &&
+           sent[start + 1].key == K_HPLEVEL && sent[start + 1].param == 516,
+           "MASTER_CUE_HW=0: the MIX/LEVEL knobs did not reach rbp (%d keycodes)",
+           sent_n - start);
+
+     master_cue_state = 1;
+     calls = master_cue_calls;
+     start = sent_n;
+     for (int t = 0; t < 250; t++)
+          map_grv6.tick();
+     CHECK(hp_holds_since(start) == 0 && master_cue_calls == calls &&
+           master_cue_state == 1,
+           "MASTER_CUE_HW=0: tick() still held something (holds %d, master cue "
+           "writes %d)", hp_holds_since(start), master_cue_calls - calls);
+
+     memset(&ev, 0, sizeof ev);
+     ev.type = SNDRV_SEQ_EVENT_NOTEON;
+     ev.data.note.channel = 6;
+     ev.data.note.note = 99;              /* MASTER CUE */
+     ev.data.note.velocity = 127;
+     dispatch(&ev);
+     CHECK(master_cue_calls == calls + 1 && master_cue_state == 0,
+           "MASTER_CUE_HW=0: MASTER CUE did not toggle rbp's master cue off");
 }
 
 static void jog_msg(int ch, int val)
@@ -628,8 +738,13 @@ int main(void)
 
      check_stream();
      check_state();
-     check_master_cue_hold();
+     {
+          int from = sent_n;
+          check_master_cue_hold();
+          check_hp_hold(from);
+     }
      check_jog();
+     check_master_cue_hw_off();
 
      printf("test_grv6: %d checks, %d failures\n", checks, failures);
      return failures == 0 ? 0 : 1;
