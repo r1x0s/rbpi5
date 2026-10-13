@@ -130,11 +130,37 @@ in the order the prompt named; the table uses the performed order.
 | LEVEL/DEPTH | CC 2 / 34 | same |
 | FX ON/OFF | note 71 (0x47) | same note (FLX4 sends it on one leg per target channel) |
 
-The six buttons' printed labels: TODO. By the FLX4's numbering (16 = CH1,
-17 = CH2, 20 = MASTER) the order would read CH1, MASTER, CH2, CH3, CH4, and 22 for
-the sixth. That is an **inference**, not a reading of the panel. The effect names
-printed at the Beat FX knob's 14 positions: TODO (they would let each position
-select the matching rbp effect directly).
+**FX channel select buttons.** Printed labels (owner, 2026-10-13): **1, 2, 3, 4,
+SP, MST**, two per row in three rows. Which note belongs to which label is **not
+yet measured**: the capture pressed them "left to right", which is ambiguous on a
+2 × 3 grid. By the FLX4's numbering (16 = CH1, 17 = CH2, 20 = MASTER) the expected
+reading is 1 = 16, 2 = 17, 3 = 18, 4 = 19, MST = 20, SP = 22; a capture pressing
+them in label order settles it.
+
+**Beat FX knob.** One note per click, strictly in order: the sweep went 33 → 45
+turning right and 45 → 32 turning back. With the effect names printed left to
+right (owner, 2026-10-13):
+
+| Note | GRV6 effect | rbp position (`K_BFXTYPE`, read off rbp's panel, `fx_zone.c`) |
+|---|---|---|
+| 32 | DELAY | 0 DELAY |
+| 33 | ECHO | 1 ECHO |
+| 34 | LC ECHO | — (rbp has none) |
+| 35 | SPIRAL | 3 SPIRAL |
+| 36 | HELIX | 4 HELIX |
+| 37 | REVERB | 5 REVERB |
+| 38 | FLANGER | 6 FLANGER |
+| 39 | PHASER | 7 PHASER |
+| 40 | FILTER | 8 FILTER |
+| 41 | TRANS | 9 TRANS |
+| 42 | PITCH | 12 PITCH |
+| 43 | ROLL | 10 ROLL |
+| 44 | MOBIUS (saw) | — |
+| 45 | MOBIUS (triangle) | — |
+
+Eleven of fourteen match by name. rbp's PING PONG (2), SLIP ROLL (11) and VINYL
+BRAKE (13) have no GRV6 position; the GRV6's LC ECHO and both MOBIUS have no rbp
+effect. What the three leftovers do is a map decision.
 
 ## Pads
 
@@ -145,8 +171,13 @@ select the matching rbp effect directly).
 | deck 1 pads + SHIFT | ch 8 (seen: HOT CUE pad 1 = note 0) | same |
 | deck 2 pads | ch 9 (seen: HOT CUE pad 1 = note 0, mode note 27 on ch 1) | same |
 
-The names printed on the four mode buttons, and any further modes (on SHIFT, or
-the GRV6's Groove Circuit / Stems / Keyboard modes): TODO.
+Printed pad modes (owner, 2026-10-13): **HOT CUE (27), STEMS (30), BEAT JUMP (32),
+SAMPLER (34)**; with SHIFT: **KEYBOARD, PAD FX, BEAT LOOP, KEY SHIFT** (on the same
+four buttons, in that order; their notes are not captured yet; the FLX4's
+SHIFT + mode notes are 105/107/109/111). rbp has four pad modes: HOT CUE,
+AUTO BEAT LOOP, SLIP BEAT LOOP, BEAT JUMP (docs/15). By name, HOT CUE, BEAT JUMP and
+BEAT LOOP have rbp equivalents; STEMS, SAMPLER, KEYBOARD, PAD FX and KEY SHIFT do
+not.
 
 ## Not measured yet
 
@@ -157,5 +188,5 @@ the GRV6's Groove Circuit / Stems / Keyboard modes): TODO.
   the faders and CH3 CUE; SHIFT variants of most deck controls.
 * Whether BEAT SYNC is sent on press or on release (the capture has both events
   but no timestamps).
-* Printed labels: the six FX channel select buttons, the Beat FX knob's 14
-  positions, the four pad modes.
+* Which note is which FX channel select button (labels known, pairing not), and
+  the SHIFT + pad-mode notes.
