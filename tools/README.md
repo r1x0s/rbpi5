@@ -9,6 +9,7 @@ Two kinds of tool live here:
 | [`build-toolchain/`](build-toolchain/) | workstation | Docker | the soft-float armel cross build environment the shims are built in |
 | [`fit-crosscheck.sh`](fit-crosscheck.sh) | workstation | shell + C | prove the driver's copy and the shim's copy of the fit rule still agree |
 | [`fbdump.c`](fbdump.c) | **the Pi** | C | dump `/dev/fb0` geometry/format + say what it means for the present path |
+| [`pi5-survey.sh`](pi5-survey.sh) | **the Pi** (as root) | shell | read-only inventory of every board fact the scripts and shims hardcode (page size, DRM card order, connectors, fb, ALSA ids, USB topology, PSU current), for bringing up a new board such as the Pi 5; runs `fbdump` too when it is beside it |
 | [`evdevdump.c`](evdevdump.c) | **the Pi** | C | enumerate input devices; find the pointer and its axis algebra |
 | [`pcmprobe.c`](pcmprobe.c) | **inside the chroot on the Pi**, or a workstation under `qemu-arm` | C | name ALSA's `snd_pcm_format_t` values, list a card's accepted formats by name, and run the whole open→configure→write sequence against a named device, access and channel count |
 | [`aseqdump2dump.py`](aseqdump2dump.py) | the Pi or a workstation | Python | turn an `aseqdump` capture into a replayable MIDI dump, and print the inventory and arithmetic a controller map is written from |

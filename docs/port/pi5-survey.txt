@@ -1,0 +1,246 @@
+pi5-survey  2026-10-13T07:56:59Z  host=pi  uid=0
+
+== model (board identity)
+Raspberry Pi 5 Model B Rev 1.0
+Revision	: c04170
+Serial		: (redacted)
+Model		: Raspberry Pi 5 Model B Rev 1.0
+               total        used        free      shared  buff/cache   available
+Mem:            3991         234        3427           9         395        3756
+Swap:           2047           0        2047
+
+== os
+PRETTY_NAME="Raspbian GNU/Linux 13 (trixie)"
+NAME="Raspbian GNU/Linux"
+VERSION_ID="13"
+VERSION="13 (trixie)"
+
+== kernel  [A1]
+Linux pi 6.18.50+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.50-1+rpt1 (2026-09-11) aarch64 GNU/Linux
+cmdline: reboot=w coherent_pool=1M 8250.nr_uarts=1 pci=pcie_bus_safe cgroup_disable=memory numa_policy=interleave nvme.max_host_mem_size_mb=32  numa=fake=8 system_heap.max_order=0 iommu_dma_numa_policy=interleave smsc95xx.macaddr=(redacted) vc_mem.mem_base=0x3fc00000 vc_mem.mem_size=0x40000000  console=ttyAMA10,115200 console=tty1 root=PARTUUID=(redacted) rootfstype=ext4 fsck.repair=yes rootwait resize cfg80211.ieee80211_regdom=DE ds=nocloud;i=(redacted)
+
+== pagesize  [A1: must be 4096 -- kernel=kernel8.img under [pi5]]
+4096
+
+== userland  [A1/S1.1: expect 32 and armhf]
+32
+armhf
+
+== 32-bit EL0 support  [A1: expect a line]
+[    0.003226] CPU features: detected: 32-bit EL0 Support
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop asimddp
+
+== kernels on /boot/firmware  [open question 1]
+-rwxr-xr-x 1 root root  8135344 Oct  6 02:06 kernel7.img
+-rwxr-xr-x 1 root root 10192324 Oct  6 02:06 kernel8.img
+-rwxr-xr-x 1 root root  7798776 Oct  6 02:06 kernel.img
+
+== config.txt (active lines, in order, section headers included)  [A7]
+dtparam=audio=on
+camera_auto_detect=1
+display_auto_detect=1
+auto_initramfs=1
+dtoverlay=vc4-kms-v3d
+max_framebuffers=2
+disable_fw_kms_setup=1
+disable_overscan=1
+arm_boost=1
+[cm4]
+otg_mode=1
+[cm5]
+dtoverlay=dwc2,dr_mode=host
+[pi5]
+dtoverlay=nospi10
+[all]
+
+== power  [A14: get_throttled must be 0x0]
+throttled=0x0
+     EXT5V_V volt(24)=5.13220000V
+usb_max_current_enable=1
+device-tree chosen/power/max_current (mA, what the PSU negotiated): 5000
+device-tree chosen/power/usb_max_current_enable: 1
+temp=51.0'C
+
+== drm cards  [A3: which cardN is vc4?]
+total 0
+drwxr-xr-x 2 root root        100 Oct  6 02:16 by-path
+crw-rw---- 1 root video  226,   0 Oct  6 02:16 card0
+crw-rw---- 1 root video  226,   1 Oct  6 02:16 card1
+crw-rw---- 1 root render 226, 128 Oct  6 02:16 renderD128
+/sys/class/drm/card0 -> driver=v3d compatible=brcm,2712-v3d
+/sys/class/drm/card1 -> driver=vc4-drm compatible=brcm,bcm2712-vc6
+
+== connectors  [A4: HDMI-A-1 / HDMI-A-2 names, status, offered modes]
+card1-HDMI-A-1: status=connected enabled=enabled
+    mode 1920x1080
+    mode 1920x1080
+    mode 1920x1080
+    mode 1920x1080
+    mode 1920x1080
+    mode 1600x900
+    mode 1280x1024
+    mode 1280x720
+    mode 1280x720
+    mode 1280x720
+    mode 1280x720
+    mode 1024x768
+card1-HDMI-A-2: status=disconnected enabled=disabled
+card1-Writeback-1: status=unknown enabled=disabled
+card1-Writeback-2: status=unknown enabled=disabled
+Connector 0 (35) HDMI-A-1 (connected)
+  Encoder 0 (34) TMDS
+    Crtc 2 (94) 1920x1080@60.00 148.500 1920/88/44/148/+ 1080/2/5/38/+ 60 (60.00) P|D 
+      Plane 2 (83) fb-id: 680 (crtcs: 2) 0,0 1920x1080 -> 0,0 1920x1080 (XR24 AR24 AB24 XB24 RX24 RA24 BX24 BA24 RG16 BG16 AR15 XR15 RG24 BG24 YU16 YV16 YU24 YV24 YU12 YV12 NV12 NV21 NV16 NV61 P030 XR30 AR30 AB30 XB30 RGB8 BGR8 XR12 AR12 XB12 AB12 BX12 BA12 RX12 RA12 P010 P012 P016 S010 S012 S016)
+        FB 680 1920x1080 RG16
+Connector 1 (44) HDMI-A-2 (disconnected)
+  Encoder 1 (43) TMDS
+
+== framebuffer  [A2: id, bpp, geometry, pages]
+0 vc4drmfb
+crw-rw---- 1 root video 29, 0 Oct  6 02:16 /dev/fb0
+/sys/class/graphics/fb0 name=vc4drmfb virtual_size=1920,1080 bpp=16 stride=3840
+[    0.360507] simple-framebuffer 3f800000.framebuffer: fb0: simplefb registered!
+[    4.552032] vc4-drm axi:gpu: bound 107c580000.hvs (ops vc4_hvs_ops [vc4])
+[    4.557664] rc rc0: vc4-hdmi-0 as /devices/platform/soc@107c000000/107c701400.hdmi/rc/rc0
+[    4.557735] input: vc4-hdmi-0 as /devices/platform/soc@107c000000/107c701400.hdmi/rc/rc0/input1
+[    4.559607] input: vc4-hdmi-0 HDMI Jack as /devices/platform/soc@107c000000/107c701400.hdmi/sound/card1/input2
+[    4.559777] vc4-drm axi:gpu: bound 107c701400.hdmi (ops vc4_hdmi_ops [vc4])
+[    4.571182] rc rc1: vc4-hdmi-1 as /devices/platform/soc@107c000000/107c706400.hdmi/rc/rc1
+[    4.571232] input: vc4-hdmi-1 as /devices/platform/soc@107c000000/107c706400.hdmi/rc/rc1/input3
+[    4.581973] input: vc4-hdmi-1 HDMI Jack as /devices/platform/soc@107c000000/107c706400.hdmi/sound/card2/input4
+[    4.587741] vc4-drm axi:gpu: bound 107c706400.hdmi (ops vc4_hdmi_ops [vc4])
+[    4.587959] vc4-drm axi:gpu: bound 107c500000.mop (ops vc4_txp_ops [vc4])
+[    4.588069] vc4-drm axi:gpu: bound 107c501000.moplet (ops vc4_txp_ops [vc4])
+[    4.588150] vc4-drm axi:gpu: bound 107c410000.pixelvalve (ops vc4_crtc_ops [vc4])
+[    4.588235] vc4-drm axi:gpu: bound 107c411000.pixelvalve (ops vc4_crtc_ops [vc4])
+[    4.645055] [drm] Initialized vc4 0.0.0 for axi:gpu on minor 1
+[    4.714196] vc4-drm axi:gpu: [drm] fb0: vc4drmfb frame buffer device
+
+== fbdump /dev/fb0  [A2 / S1.3]
+device: /dev/fb0
+
+--- var (FBIOGET_VSCREENINFO) ---
+  xres yres           1920 1080
+  xres_virtual        1920
+  xoffset yoffset     0 0
+  bits_per_pixel      16
+  grayscale           0
+  red     offset=11 length=5  msb_right=0
+  green   offset=5  length=6  msb_right=0
+  blue    offset=0  length=5  msb_right=0
+  transp  offset=0  length=0  msb_right=0
+  physical w x h      350 x 200 mm
+  pixclock            0
+  margins l/r u/l     0/0 0/0
+  hsync vsync len     0 0
+  sync                0
+  vmode               0
+  rotate              0
+  nonstd activate     0 0
+
+--- fix (FBIOGET_FSCREENINFO) ---
+  id                  vc4drmfb
+  smem_start          0x00000000
+  smem_len            4147200  (3.96 MiB)
+  type type_aux       0 0
+  visual              2
+  line_length         3840
+  mmio_len accel      0 0
+
+--- sysfs (/sys/class/graphics/fb0) ---
+  name               vc4drmfb
+  virtual_size       1920,1080
+  stride             3840
+  bits_per_pixel     16
+  rotate             0
+  blank              4
+
+--- what this means ---
+  format: RGB565, 16bpp, exactly rbp's native format:
+    present path can memcpy per row (no conversion)
+  framebuffer bytes   4147200 (3.96 MiB) vs smem_len 4147200
+  yres_virtual/yres   1080/1080  (1 page)
+  xpanstep/ypanstep   1/1
+  -> pannable flag set but only one page: verify with dmesg.
+
+--- against rbp's expectation (logical 1280x800 RGB565) ---
+  geometry   fb is 1920x1080: the 1280x800 image FITS 1:1
+             -> DFB_PRESENT=letterbox, bars of 320 columns and 140 rows
+             (best case: no scaler, no distortion)
+
+== alsa  [A5 (Phase 2): HDMI card ids]
+ 1 [vc4hdmi0       ]: vc4-hdmi - vc4-hdmi-0
+                      vc4-hdmi-0
+ 2 [vc4hdmi1       ]: vc4-hdmi - vc4-hdmi-1
+                      vc4-hdmi-1
+**** List of PLAYBACK Hardware Devices ****
+card 1: vc4hdmi0 [vc4-hdmi-0], device 0: MAI PCM i2s-hifi-0 [MAI PCM i2s-hifi-0]
+  Subdevices: 1/1
+  Subdevice #0: subdevice #0
+card 2: vc4hdmi1 [vc4-hdmi-1], device 0: MAI PCM i2s-hifi-0 [MAI PCM i2s-hifi-0]
+  Subdevices: 1/1
+  Subdevice #0: subdevice #0
+
+== sequencer and sound nodes  [S1.2]
+total 0
+drwxr-xr-x 2 root root       80 Oct 13 09:13 by-path
+crw-rw---- 1 root audio 116,  7 Oct  6 02:16 controlC1
+crw-rw---- 1 root audio 116,  9 Oct  6 02:16 controlC2
+crw-rw---- 1 root audio 116,  6 Oct  6 02:16 pcmC1D0p
+crw-rw---- 1 root audio 116,  8 Oct  6 02:16 pcmC2D0p
+crw-rw---- 1 root audio 116,  1 Oct  6 02:16 seq
+crw-rw---- 1 root audio 116, 33 Oct  6 02:16 timer
+client 0: 'System' [type=kernel]
+    0 'Timer           '
+    1 'Announce        '
+client 14: 'Midi Through' [type=kernel]
+    0 'Midi Through Port-0'
+
+== usb  [A8, A9, A10]
+Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 002 Device 002: ID 0781:5581 SanDisk Corp. Ultra
+Bus 003 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 004 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+/:  Bus 001.Port 001: Dev 001, Class=root_hub, Driver=xhci-hcd/2p, 480M
+/:  Bus 002.Port 001: Dev 001, Class=root_hub, Driver=xhci-hcd/1p, 5000M
+    |__ Port 001: Dev 002, If 0, Class=Mass Storage, Driver=usb-storage, 5000M
+/:  Bus 003.Port 001: Dev 001, Class=root_hub, Driver=xhci-hcd/2p, 480M
+/:  Bus 004.Port 001: Dev 001, Class=root_hub, Driver=xhci-hcd/1p, 5000M
+2-1 0781:5581  SanDisk 3.2Gen1
+usb1 1d6b:0002 xHCI Host Controller
+usb2 1d6b:0003 xHCI Host Controller
+usb3 1d6b:0002 xHCI Host Controller
+usb4 1d6b:0003 xHCI Host Controller
+healthwatch-style count (entries matching ^[0-9]+-[0-9.]+$): 1
+/sys/block/sda -> /sys/devices/platform/axi/1000120000.pcie/1f00200000.usb/xhci-hcd.0/usb2/2-1/2-1:1.0/host0/target0:0:0/0:0:0:0/block/sda
+
+== net  [A11]  (names and state only: MAC addresses are left out of a committed file)
+lo UNKNOWN
+eth0 DOWN
+wlan0 UP
+
+== input  [S3.1]
+N: Name="pwr_button"
+H: Handlers=kbd event0 
+N: Name="vc4-hdmi-0"
+H: Handlers=kbd event1 
+N: Name="vc4-hdmi-0 HDMI Jack"
+H: Handlers=event2 
+N: Name="vc4-hdmi-1"
+H: Handlers=kbd event3 
+N: Name="vc4-hdmi-1 HDMI Jack"
+H: Handlers=event4 
+total 0
+drwxr-xr-x 2 root root     100 Oct  6 02:16 by-path
+crw-rw---- 1 root input 13, 64 Oct  6 02:16 event0
+crw-rw---- 1 root input 13, 65 Oct  6 02:16 event1
+crw-rw---- 1 root input 13, 66 Oct  6 02:16 event2
+crw-rw---- 1 root input 13, 67 Oct  6 02:16 event3
+crw-rw---- 1 root input 13, 68 Oct  6 02:16 event4
+crw-rw---- 1 root input 13, 63 Oct  6 02:16 mice
+
+== anything already deployed (an old rbpi4b install would be here)
+ls: cannot access '/opt/rblive4': No such file or directory
+not-found
+inactive

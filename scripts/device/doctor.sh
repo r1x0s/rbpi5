@@ -439,6 +439,17 @@ esac
 # --- 4. the ABI test: can this kernel actually run the tree -----------------
 
 hdr 4 "chroot execution (the real ABI test)"
+# The page size first, and without root: the chroot test below can pass on a
+# 16 K-page kernel (the Pi 5 firmware's default, kernel_2712.img) while
+# everything this tree was measured on ran 4 K pages (install.sh says why).
+_ps=$(getconf PAGESIZE 2>/dev/null || echo '?')
+if [ "$_ps" = "4096" ]; then
+	ok "page size 4096"
+else
+	bad "page size is $_ps, not 4096 — this tree has only run on 4 K-page kernels"
+	note "on a Raspberry Pi 5 the firmware picks the 16 K kernel_2712.img by default"
+	fix "Pi 5: add '[pi5]' + 'kernel=kernel8.img' to /boot/firmware/config.txt above the final [all], reboot"
+fi
 if [ "$(id -u)" = "0" ]; then
 	# stderr is captured into a variable rather than a temp file, so the whole
 	# script still opens nothing for writing. The redirection order matters:
