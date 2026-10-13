@@ -84,6 +84,7 @@
 #include "master_policy.h"
 #include "pace_policy.h"
 #include "controllers.h"   /* the selected controller's card id */
+#include "hp_align.h"      /* the headphone pair's delay and alignment probe */
 
 /* Enforce GLIBC_2.4 versioning for libdl on glibc 2.13 */
 __asm__(".symver dlsym, dlsym@GLIBC_2.4");
@@ -230,7 +231,20 @@ static struct {
     long mute_frames;          /* STARTUP_MUTE_MS at 44100 */
     long fade_frames;          /* STARTUP_FADE_MS at 44100 */
     int  sched_rt;             /* SCHED_RT: 1 = keep rbp off RT (default) */
+    int  hp_delay;             /* AUDIO_HP_DELAY: frames the headphone pair is
+                                * held back (0..HP_DELAY_MAX), as set */
+    int  hp_invert;            /* AUDIO_HP_INVERT: 1 = flip its polarity */
+    int  align_probe;          /* AUDIO_ALIGN_PROBE: 1 = measure and log the
+                                * headphone pair's offset against the master */
 } g_cfg;
+
+/* The headphone pair's delay line and the probe that measures what it should be
+ * (hp_align.h says why a controller that mixes its headphones in hardware needs
+ * either). Audio-thread only. */
+static struct hp_delay g_hp_delay;
+static struct hp_probe g_hp_probe;
+static unsigned long g_align_last_log;   /* g_write_count of the last report */
+static unsigned long g_align_quiet;      /* silent windows since the last line */
 
 /* The pair map exactly as configured, before resolve_pairs() can clamp it.
  *
@@ -1155,6 +1169,24 @@ static void load_config(void)
      * stable. 0 lets rbp's own SCHED_FIFO 98 / core-0 requests through, for when
      * the difference itself is what you are measuring. */
     g_cfg.sched_rt = env_flag("SCHED_RT", 1);
+
+    /* The headphone pair's timing (hp_align.h). Both default to "do nothing", so
+     * a unit whose headphones are rbp's phone stream alone -- the FLX4 -- is
+     * byte-for-byte unchanged. The delay is applied to the pair as it goes to the
+     * card; the probe only reads. */
+    {
+        long d = env_int("AUDIO_HP_DELAY", 0);
+        g_cfg.hp_delay = (int)hp_delay_init(&g_hp_delay, d);
+        if (d != g_cfg.hp_delay)
+            alog("audioshim: AUDIO_HP_DELAY=%ld is outside 0..%d frames; using %d\n",
+                 d, HP_DELAY_MAX, g_cfg.hp_delay);
+    }
+    g_cfg.hp_invert = env_flag("AUDIO_HP_INVERT", 0);
+    g_cfg.align_probe = env_flag("AUDIO_ALIGN_PROBE", 0);
+    hp_probe_reset(&g_hp_probe);
+    alog("audioshim: headphone pair: delay=%d frame(s) (%.2f ms) invert=%d "
+         "align_probe=%d\n", g_cfg.hp_delay, g_cfg.hp_delay * 1000.0 / 44100.0,
+         g_cfg.hp_invert, g_cfg.align_probe);
 
     alog("audioshim: config dev=%s card=%s channels=%s map=[master=%d,%d "
          "headphones=%d,%d booth=%d,%d monitor=%d,%d] fmt=%s mute=%ldms "
@@ -3040,6 +3072,76 @@ static void fold_stage(const struct stage *st, const struct pair *pair,
     }
 }
 
+/* The headphone pair's delay and polarity, then the probe on the frame exactly
+ * as it will reach the card. Called once per block, after the phone stream has
+ * been folded in and before the pack.
+ *
+ * The probe's cost is ALIGN_LAGS_PER_BLOCK x HP_PROBE_WIN integer multiply-adds
+ * per block (32 768; the inner loop is two halfword loads and one SMLALBB, so
+ * expected well under 0.1 ms against a 1451 us block -- TODO: unverified on the
+ * unit), one verdict per ~0.5 s, and it is off unless AUDIO_ALIGN_PROBE=1. Its verdict is logged at most every ~3 s
+ * (ALIGN_LOG_BLOCKS), and a run of silent windows once per ~30 s, so leaving it
+ * on costs a log line, not a log flood. */
+#define ALIGN_LAGS_PER_BLOCK 8
+#define ALIGN_LOG_BLOCKS 2000UL     /* ~2.9 s of 64-frame blocks */
+#define ALIGN_QUIET_BLOCKS 20000UL  /* ~29 s */
+static void align_headphones(unsigned frames)
+{
+    struct hp_probe_result r;
+
+    if (!pair_mapped(&g_cfg.headphones))
+        return;
+    hp_delay_run(&g_hp_delay, g_out, frames, g_out_channels,
+                 (unsigned)g_cfg.headphones.a, (unsigned)g_cfg.headphones.b,
+                 g_cfg.hp_invert);
+
+    if (!g_cfg.align_probe || !pair_mapped(&g_cfg.master))
+        return;
+    hp_probe_feed(&g_hp_probe, g_out, frames, g_out_channels,
+                  (unsigned)g_cfg.master.a, (unsigned)g_cfg.master.b,
+                  (unsigned)g_cfg.headphones.a, (unsigned)g_cfg.headphones.b);
+    if (!hp_probe_step(&g_hp_probe, ALIGN_LAGS_PER_BLOCK, &r))
+        return;
+    if (!r.valid) {
+        if (g_write_count - g_align_last_log >= ALIGN_QUIET_BLOCKS) {
+            g_align_last_log = g_write_count;
+            alog("audioshim: align: no signal on both pairs (%lu quiet window(s)); "
+                 "play ONE deck with its channel CUE on and its fader up\n",
+                 g_align_quiet + 1);
+            g_align_quiet = 0;
+        } else {
+            g_align_quiet++;
+        }
+        return;
+    }
+    if (g_write_count - g_align_last_log < ALIGN_LOG_BLOCKS)
+        return;
+    g_align_last_log = g_write_count;
+    g_align_quiet = 0;
+    {
+        int want = g_cfg.hp_delay + r.lag;
+        int inv = (r.corr_milli < 0) ? !g_cfg.hp_invert : g_cfg.hp_invert;
+        const char *trust = (r.corr_milli >= 500 || r.corr_milli <= -500)
+                                ? "" : " (weak: the pairs carry different "
+                                       "material; trust only a corr near +-1)";
+
+        alog("audioshim: align: headphones vs master: lag %+d frame(s) "
+             "(%+.2f ms), corr %+.3f (at lag 0: %+.3f); delay now %d invert %d"
+             "%s\n", r.lag, r.lag * 1000.0 / 44100.0, r.corr_milli / 1000.0,
+             r.corr0_milli / 1000.0, g_cfg.hp_delay, g_cfg.hp_invert, trust);
+        if (r.lag == 0 && inv == g_cfg.hp_invert)
+            alog("audioshim: align: aligned (nothing to change)\n");
+        else if (want < 0)
+            alog("audioshim: align: the headphones are LATE by %d frame(s); a "
+                 "headphone delay cannot fix that (it would need the master "
+                 "held back)%s\n", -want,
+                 inv != g_cfg.hp_invert ? ", and the polarity is flipped" : "");
+        else
+            alog("audioshim: align: suggest RB_AUDIO_HP_DELAY=%d "
+                 "RB_AUDIO_HP_INVERT=%d\n", want, inv);
+    }
+}
+
 static snd_pcm_sframes_t flush_master(const int32_t *src, snd_pcm_uframes_t size)
 {
     float master_gain = clamp01(g_master_gain);
@@ -3158,6 +3260,7 @@ static snd_pcm_sframes_t flush_master(const int32_t *src, snd_pcm_uframes_t size
     }
     fold_stage(&g_phone_stage, &g_cfg.headphones, (unsigned)size);
     fold_stage(&g_booth_stage, &g_cfg.booth, (unsigned)size);
+    align_headphones((unsigned)size);
 
     g_write_count++;
 

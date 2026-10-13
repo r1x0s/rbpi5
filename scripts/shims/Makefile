@@ -240,14 +240,23 @@ $(CTRL_OBJS): %.o: %.c $(CTRL_HDRS)
 # rbp_vu.c's log10() and rbp_led.c. A host libm here would stamp GLIBC_2.29+
 # references and the shim would refuse to load in the glibc-2.13 chroot.
 audioshim.so: audioshim.o s24pack.o mirror_policy.o master_policy.o \
-              pace_policy.o controllers.o
+              pace_policy.o hp_align.o controllers.o
 	$(CC) $(CFLAGS) -shared -o $@ audioshim.o s24pack.o mirror_policy.o \
-	    master_policy.o pace_policy.o controllers.o $(RX3LIB)/libdl.so.2 -lm -lc \
+	    master_policy.o pace_policy.o hp_align.o controllers.o \
+	    $(RX3LIB)/libdl.so.2 -lm -lc \
 	    $(LDFLAGS)
 
 audioshim.o: audioshim.c shmstate.h envutil.h s24pack.h mirror_policy.h \
-             master_policy.h pace_policy.h controllers.h
+             master_policy.h pace_policy.h hp_align.h controllers.h
 s24pack.o: s24pack.c s24pack.h
+
+# hp_align.o is the headphone pair's delay and the probe that measures it
+# (AUDIO_HP_DELAY / AUDIO_HP_INVERT / AUDIO_ALIGN_PROBE), split out for the
+# reason s24pack.o is: pure, so test_align pins its sign convention and its
+# arithmetic on the host. Integer-only in the per-block path, because this shim
+# is soft-float; its sqrt()/lrint() run once per verdict, and are why -lm above
+# matters to it too.
+hp_align.o: hp_align.c hp_align.h
 
 # controllers.o is shared with knobshim.so, and audioshim.o now includes its
 # header: the default ALSA card and the FLX4's port-name hint are two fields of
@@ -648,7 +657,8 @@ pcmprobe: ../../tools/pcmprobe.c
 TESTS := test_point test_audio test_midi test_flx4 test_grv6 test_kbd test_cursor \
          test_evdev test_cursor_dev test_menu test_side test_window test_keyboard \
          test_menu_dev test_util test_wave test_prompt test_fx test_hc test_fxpad \
-         test_led_table test_plinn_scan test_controllers test_usblabel test_netalias
+         test_led_table test_plinn_scan test_controllers test_usblabel test_netalias \
+         test_align
 
 test_point: test_point.c tscfake.c point_xform.c touch_zone.c $(FBSHIM_HDRS)
 	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
@@ -797,6 +807,15 @@ test_controllers: test_controllers.c controllers.c controllers.h
 test_usblabel: test_usblabel.c usb_label.c usb_label.h
 	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
 	    -Wall -Wextra -static -o $@ test_usblabel.c usb_label.c
+
+# test_align links the PRODUCTION hp_align.c: the headphone delay and the
+# alignment probe. What it pins is the probe's SIGN (which pair is early) and the
+# closed loop the operator follows -- delay by the reported lag, and the residual
+# is zero -- against synthetic noise whose offset is known. It cannot say how far
+# apart rbp's streams really are; that is the probe's own job on the unit.
+test_align: test_align.c hp_align.c hp_align.h
+	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
+	    -Wall -Wextra -static -o $@ test_align.c hp_align.c -lm
 
 # test_netalias links the PRODUCTION netalias.c, for the same reason the tests
 # above link their modules: the verdicts it holds are the ones that would

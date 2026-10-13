@@ -207,6 +207,42 @@ Corollary: the cue mix/level knobs are **not** applied in the audio shim. They
 belong on rbp's mixer engine, through the controls bridge — see
 [08 — Controls](08-controls.md).
 
+### Headphones mixed in the controller (the DDJ-GRV6)
+
+Everything above assumes the headphone jack plays rbp's phone stream and nothing
+else, which is true of the FLX4. The **DDJ-GRV6 mixes its headphones itself**: its
+MASTER CUE puts USB channels 0/1 (master) into the jack with no host involved
+(measured on the unit, 2026-10-13), and its HEADPHONES MIX knob blends the two in
+hardware, with LEVEL as the jack's own volume (Algoriddim's support says both of
+the GRV6; expected here). So on that controller:
+
+* **rbp must send the cue bus alone** on 2/3. The GRV6 map holds rbp's master cue
+  off, its headphone MIX at the CUE end and its LEVEL at unity, and does not
+  forward the two knobs (`RB_MASTER_CUE_HW`, default on; C-046). Forwarding them
+  — the first version did — applied MIX and LEVEL twice to the cue and once to
+  the master, and the cue drowned under the master.
+* **the two streams meet in the controller**, so how rbp's phone and master
+  streams line up suddenly matters: with a channel CUE on and that fader up, the
+  same track arrives twice, and an offset between the streams is a comb filter
+  ("the cues cancel each other out"). This is the SC Live 4 lesson above, with
+  the summing moved into the hardware. `scripts/shims/hp_align.[ch]` (C-047)
+  gives the shim three knobs for it:
+
+| knob | default | what |
+|---|---|---|
+| `RB_AUDIO_ALIGN_PROBE` | empty = off | cross-correlates the headphone pair against the master pair as they go to the card (±1024 frames, 4096-frame windows, integer-only, 8 lags per block) and logs `align: headphones vs master: lag +N frame(s) … corr …` and `suggest RB_AUDIO_HP_DELAY=… RB_AUDIO_HP_INVERT=…` every ~3 s. Reads only |
+| `RB_AUDIO_HP_DELAY` | 0 | frames (0..4096) the headphone pair is held back |
+| `RB_AUDIO_HP_INVERT` | 0 | 1 flips the headphone pair's polarity |
+
+The procedure: `RB_AUDIO_ALIGN_PROBE=1`, restart, play **one** deck with its
+channel CUE on and its fader up (the master then carries the same track), read
+the suggestion, set it, restart, and the probe should then say `lag +0 …
+aligned`. A positive lag means the headphones are early, which a headphone delay
+fixes; a negative one (headphones late) would need the master held back, which
+this shim does not do, and says so. A correlation far from ±1 means the two
+pairs carried different material and the lag means nothing. Whether rbp's streams
+are offset at all, and by how much, is **not measured yet** (TODO).
+
 ## The HDMI mirror
 
 The master audio can also go out of the Pi's HDMI, **at the same time** as the
