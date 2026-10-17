@@ -744,6 +744,10 @@ __attribute__((constructor))
 static void knobshim2_init(void)
 {
      pthread_t tid;
+     /* First, and from the constructor on purpose: rbp's main() has not run, so
+      * no play-engine thread can be inside checkPrecision while its prologue is
+      * rewritten (beatsync_guard.h, the 2026-10-17 crash at pc 0x7c404). */
+     install_beatsync_guard();
      led_sweep = env_on("LED_SWEEP", 0);        /* must be known before
                                                  * spawning the sweep thread */
      if (pthread_create(&tid, NULL, vu_thread, NULL) == 0)

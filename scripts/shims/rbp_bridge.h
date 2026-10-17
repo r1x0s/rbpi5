@@ -90,5 +90,12 @@ extern volatile unsigned int g_meter_bits[3];
  * trampoline. No-op (and harmless) if the prologue is not the one we expect. */
 void install_meter_hook(void);
 
+/* Patch the prologues of rbp's playengine::BeatSync::checkPrecision and
+ * ::syncBeat to run beatsync_guard() first (beatsync_guard.h: the 2026-10-17
+ * crash at pc 0x7c404). Called from knobshim's constructor, before rbp's threads
+ * exist. A function whose prologue is not the expected one is left alone, and
+ * the log says so. */
+void install_beatsync_guard(void);
+
 #endif /* RBPI4B_RBP_BRIDGE_H */
 

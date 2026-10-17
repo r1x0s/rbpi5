@@ -899,6 +899,24 @@ static const signed char bfx_type_to_pos[15] = {
 #define RET_CH2            0x2d0a8cUL
 #define PROLOGUE_GETLED    0xe92d4070u   /* push {r4,r5,r6,lr} */
 
+/* ---- beat-sync guard: playengine::BeatSync::checkPrecision and ::syncBeat,
+ * both (int const& deck, int const& master, bool const& flag) -----------------
+ * The 2026-10-17 SIGSEGV (pc 0x7c404, addr 0x24) is in checkPrecision: it
+ * dereferences its cached BeatPosInfo* with no NULL test, and syncBeat does the
+ * same at 0x7b434. beatsync_guard.h has the whole account and the BeatSync
+ * layout. Each function's two prologue words are displaced into a trampoline
+ * exactly like the meter hook's -- all four are position-independent.
+ * Player::getBeatPosInfo() is what fills the cache (checkStartCondition
+ * @0x7b100), so the guard refills it from the same call. */
+#define ADDR_BEATSYNC_CHECKPREC   0x0007c1f0UL
+#define PROLOGUE_CHECKPREC_0      0xe92d4ff0u   /* push {r4-r11,lr} */
+#define PROLOGUE_CHECKPREC_1      0xed2d8b04u   /* vpush {d8-d9} */
+#define ADDR_BEATSYNC_SYNCBEAT    0x0007b30cUL
+#define PROLOGUE_SYNCBEAT_0       0xe92d4ff0u   /* push {r4-r11,lr} */
+#define PROLOGUE_SYNCBEAT_1       0xed2d8b08u   /* vpush {d8-d11} */
+#define ADDR_PLAYER_GETBEATPOS    0x000684dcUL
+#define PROLOGUE_GETBEATPOS       0xe59000c8u   /* ldr r0,[r0,#200] */
+
 
 /* ui::Mixer's cached meter levels: uiobj = *(0x026867c0); mixer = *(uiobj+80);
  * lvl = *(long**)(mixer+0xb8)  (see IUiObjManager::getMixer @0x31e054 and

@@ -43,6 +43,7 @@
 #include "rbp_key.h"
 #include "rbp_bridge.h"
 #include "plinn_scan.h"
+#include "beatsync_guard.h"
 
 /* The key path -- is_rbp_process(), get_key_manager() and send_rx_key*() -- is
  * in rbp_key.c, because fbshim needs it too (the on-screen QUANTIZE tap) and
@@ -471,4 +472,188 @@ unsigned int getled_hook(void *self, unsigned char level)
      else if (lr == (void *)RET_CH2)
           g_meter_bits[2] = v;
      return v;
+}
+
+/* ---------- beat-sync guard (beatsync_guard.h) ----------
+ *
+ * Two of rbp's functions, both BeatSync methods taking (int const& deck,
+ * int const& master, bool const& flag), both dereferencing a cached
+ * BeatPosInfo* without a NULL test: checkPrecision (the 2026-10-17 crash at
+ * pc 0x7c404) and syncBeat. Each prologue is two position-independent words
+ * (push; vpush), displaced into a trampoline exactly like the meter hook's.
+ * The hooks run in rbp's play-engine thread, at the engine's rate; they log
+ * only when the guard acted, the first few times and every 1024th after. */
+
+typedef int (*bs_fn)(void *bs, const int *deck, const int *master,
+                     const unsigned char *flag);
+static bs_fn g_orig_checkprec, g_orig_syncbeat;
+static volatile unsigned int g_bsg_skips, g_bsg_refills;
+
+static void *player_beatpos(void *player)
+{
+     return ((void *(*)(void *))ADDR_PLAYER_GETBEATPOS)(player);
+}
+
+/* 1 = call the original. */
+static int bsg_decide(int fn, void *bs, const int *deck, const int *master,
+                      const unsigned char *flag)
+{
+     const char *name = fn == BSG_FN_SYNCBEAT ? "syncBeat" : "checkPrecision";
+     int which = -1;
+     int r = beatsync_guard(fn, bs, *deck, *master, *flag, player_beatpos,
+                            &which);
+
+     if (r == BSG_SKIP) {
+          unsigned int n = ++g_bsg_skips;
+          if (n <= 8 || (n & 1023) == 0)
+               klog("knobshim2: beatsync guard: %s deck%d->deck%d: deck%d has "
+                    "no beat grid -- skipped instead of crashing rbp [#%u]\n",
+                    name, *deck + 1, *master + 1, which + 1, n);
+          return 0;
+     }
+     if (r == BSG_REFILLED) {
+          unsigned int n = ++g_bsg_refills;
+          if (n <= 8 || (n & 1023) == 0)
+               klog("knobshim2: beatsync guard: %s: deck%d's beat grid was not "
+                    "cached -- filled from the player [#%u]\n", name,
+                    which + 1, n);
+     }
+     return 1;
+}
+
+/* rbp's checkPrecision returns nothing; returning 0 from here leaves r0 as
+ * garbage the caller never reads (checkAllPrecision @0x7c914 ignores it). */
+__attribute__((visibility("default")))
+int checkprec_hook(void *bs, const int *deck, const int *master,
+                   const unsigned char *flag);
+int checkprec_hook(void *bs, const int *deck, const int *master,
+                   const unsigned char *flag)
+{
+     if (!bsg_decide(BSG_FN_CHECKPREC, bs, deck, master, flag))
+          return 0;
+     return g_orig_checkprec(bs, deck, master, flag);
+}
+
+/* syncBeat's 0 is its own "nothing done" (0x7b878); BeatSync::sync @0x7d240
+ * then simply moves on to the next deck. */
+__attribute__((visibility("default")))
+int syncbeat_hook(void *bs, const int *deck, const int *master,
+                  const unsigned char *flag);
+int syncbeat_hook(void *bs, const int *deck, const int *master,
+                  const unsigned char *flag)
+{
+     if (!bsg_decide(BSG_FN_SYNCBEAT, bs, deck, master, flag))
+          return 0;
+     return g_orig_syncbeat(bs, deck, master, flag);
+}
+
+/* Rewrite one prologue to jump to `hook`, with *orig set to the trampoline
+ * that runs the original BEFORE the jump is written, so the hook can never run
+ * with a NULL original. 1 = hooked; 0 = the function is untouched. */
+static int bsg_patch(unsigned long addr, uint32_t w0, uint32_t w1,
+                     void *hook, bs_fn *orig, const char *name)
+{
+     unsigned char *p = (unsigned char *)addr, *tr;
+     unsigned long pg;
+     const size_t pgsz = 4096;
+
+     if (((volatile uint32_t *)p)[0] != w0 || ((volatile uint32_t *)p)[1] != w1) {
+          klog("knobshim2: beatsync guard: unexpected prologue of %s at %p -- "
+               "not hooked (a different rbp?)\n", name, (void *)p);
+          return 0;
+     }
+     tr = mmap(NULL, pgsz, PROT_READ | PROT_WRITE | PROT_EXEC,
+               MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+     if (tr == MAP_FAILED) {
+          klog("knobshim2: beatsync guard: mmap failed (%s)\n", name);
+          return 0;
+     }
+     memcpy(tr, p, 8);                            /* push; vpush */
+     *(uint32_t *)(tr + 8) = 0xE51FF004u;         /* ldr pc,[pc,#-4] */
+     *(uint32_t *)(tr + 12) = (uint32_t)(p + 8);
+     __builtin___clear_cache((char *)tr, (char *)tr + 16);
+     *orig = (bs_fn)tr;
+
+     pg = (unsigned long)p & ~(unsigned long)(pgsz - 1);
+     if (mprotect((void *)pg, pgsz, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
+          klog("knobshim2: beatsync guard: mprotect rw failed (%s)\n", name);
+          *orig = NULL;
+          munmap(tr, pgsz);
+          return 0;
+     }
+     *(uint32_t *)(p + 4) = (uint32_t)hook;
+     *(uint32_t *)(p + 0) = 0xE51FF004u;          /* ldr pc,[pc,#-4] */
+     mprotect((void *)pg, pgsz, PROT_READ | PROT_EXEC);
+     __builtin___clear_cache((char *)p, (char *)p + 8);
+     return 1;
+}
+
+/* is_rbp_process() is a substring test on the command line, which a helper
+ * rbp spawns could pass too (its arguments may name rbp). That is harmless for
+ * the meter hook's thread, but this runs from the CONSTRUCTOR of every process
+ * that inherits LD_PRELOAD and reads rbp's code addresses, so it also wants
+ * those addresses to be mapped from a file called rbp before it touches them.
+ * /proc/self/exe cannot say so: start-rb.sh runs rbp through RB_LOADER
+ * (ld-linux.so.3), and that is what exe names. /proc/self/maps can. */
+static int addr_in_rbp(unsigned long addr)
+{
+     static char buf[32768];
+     size_t len = 0;
+     ssize_t n;
+     char *line, *nl;
+     int fd = real_open("/proc/self/maps", O_RDONLY, 0);
+
+     if (fd < 0)
+          return 0;
+     while (len < sizeof buf - 1 &&
+            (n = real_read(fd, buf + len, sizeof buf - 1 - len)) > 0)
+          len += (size_t)n;
+     real_close(fd);
+     buf[len] = '\0';
+     for (line = buf; line && *line; line = nl ? nl + 1 : NULL) {
+          unsigned long lo, hi;
+          const char *base;
+          size_t bl;
+
+          nl = strchr(line, '\n');
+          if (nl)
+               *nl = '\0';
+          if (sscanf(line, "%lx-%lx", &lo, &hi) != 2 || addr < lo || addr >= hi)
+               continue;
+          base = strrchr(line, '/');
+          if (!base)
+               return 0;
+          base++;
+          bl = strlen(base);
+          while (bl && base[bl - 1] == ' ')
+               bl--;
+          return bl == 3 && strncmp(base, "rbp", 3) == 0;
+     }
+     return 0;
+}
+
+void install_beatsync_guard(void)
+{
+     if (!is_rbp_process() || !addr_in_rbp(ADDR_BEATSYNC_CHECKPREC) ||
+         !addr_in_rbp(ADDR_BEATSYNC_SYNCBEAT) ||
+         !addr_in_rbp(ADDR_PLAYER_GETBEATPOS)) {
+          if (is_rbp_process())
+               klog("knobshim2: beatsync guard: rbp's code is not where "
+                    "rbp_abi.h says -- not installed\n");
+          return;
+     }
+     if (*(volatile uint32_t *)ADDR_PLAYER_GETBEATPOS != PROLOGUE_GETBEATPOS) {
+          klog("knobshim2: beatsync guard: unexpected Player::getBeatPosInfo at "
+               "%p -- not installed (a different rbp?)\n",
+               (void *)ADDR_PLAYER_GETBEATPOS);
+          return;
+     }
+     int a = bsg_patch(ADDR_BEATSYNC_CHECKPREC, PROLOGUE_CHECKPREC_0,
+                       PROLOGUE_CHECKPREC_1, (void *)checkprec_hook,
+                       &g_orig_checkprec, "checkPrecision");
+     int b = bsg_patch(ADDR_BEATSYNC_SYNCBEAT, PROLOGUE_SYNCBEAT_0,
+                       PROLOGUE_SYNCBEAT_1, (void *)syncbeat_hook,
+                       &g_orig_syncbeat, "syncBeat");
+     klog("knobshim2: beatsync guard: checkPrecision %s, syncBeat %s\n",
+          a ? "hooked" : "NOT hooked", b ? "hooked" : "NOT hooked");
 }

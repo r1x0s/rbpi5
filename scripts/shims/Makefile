@@ -245,11 +245,12 @@ rbp_key.o: rbp_key.c rbp_key.h rbp_abi.h syscalls.h
 # list; it is hidden too, and says why in its own rule above.)
 CTRL_OBJS  := ctrlshim.o ctrl_map.o map_flx4.o map_grv6.o map_jp21.o map_kbd.o evdev_io.o \
               mididump.o rbp_bridge.o rbp_led.o led_table.o plinn_scan.o \
-              rbp_vu.o midi_io.o controllers.o shimutil.o usb_label.o rbp_load.o
+              rbp_vu.o midi_io.o controllers.o shimutil.o usb_label.o rbp_load.o \
+              beatsync_guard.o
 CTRL_HDRS  := rbp_abi.h rbp_bridge.h rbp_key.h rbp_led.h led_table.h rbp_vu.h \
               midi_io.h shimutil.h ctrl_map.h mididump.h evdev_io.h syscalls.h \
               shmstate.h plinn_scan.h controllers.h usb_label.h pitch_state.h \
-              rbp_load.h
+              rbp_load.h beatsync_guard.h
 knobshim.so: $(CTRL_OBJS) rbp_key.o shmstate.o fader_state.o rbp_transport.o \
              pitch_state.o keylog.o keylog_state.o $(CTRL_HDRS) rbp_transport.h \
              pitch_state.h keylog.h keylog_state.h \
@@ -662,7 +663,7 @@ TESTS := test_point test_audio test_midi test_flx4 test_grv6 test_kbd test_curso
          test_menu_dev test_util test_wave test_fx test_hc test_fxpad \
          test_led_table test_plinn_scan test_controllers test_usblabel test_netalias \
          test_pitch test_keylog test_padmode test_deckbadge test_bpmbox \
-         test_settings test_align
+         test_settings test_align test_beatsync
 
 test_point: test_point.c tscfake.c point_xform.c touch_zone.c $(FBSHIM_HDRS)
 	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
@@ -787,6 +788,14 @@ test_usblabel: test_usblabel.c usb_label.c usb_label.h
 test_align: test_align.c hp_align.c hp_align.h
 	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
 	    -Wall -Wextra -static -o $@ test_align.c hp_align.c -lm
+
+# test_beatsync links the PRODUCTION beatsync_guard.c: the rule knobshim runs in
+# front of rbp's BeatSync::checkPrecision (the 2026-10-17 SIGSEGV at pc 0x7c404).
+# Its BeatSync is a fake laid out as rbp's is; what it pins is that the guard
+# leaves every state rbp copes with untouched and skips only the one that faults.
+test_beatsync: test_beatsync.c beatsync_guard.c beatsync_guard.h
+	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
+	    -Wall -Wextra -static -o $@ test_beatsync.c beatsync_guard.c
 
 # test_netalias links the PRODUCTION netalias.c, for the same reason the tests
 # above link their modules: the verdicts it holds are the ones that would
