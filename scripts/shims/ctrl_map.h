@@ -356,7 +356,7 @@ extern const struct ctrl_map map_kbd;
 extern const struct ctrl_map map_flx4;
 
 /* The AlphaTheta DDJ-GRV6, this fork's target. Its tables are MEASURED from the
- * unit (docs/19-grv6-midi.md); its LEDs are not, so it declares no LED table. */
+ * unit (docs/port/grv6-midi.md); its LEDs are not, so it declares no LED table. */
 extern const struct ctrl_map map_grv6;
 
 /* The selected MIDI surface's LED table, or NULL if it has none to drive. Defined

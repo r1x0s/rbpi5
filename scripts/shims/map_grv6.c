@@ -9,7 +9,7 @@
  *
  * Every note, CC and channel below is MEASURED on the unit: the 2026-10-13
  * capture (tools/grv6-capture.sh, 68 labelled blocks, raw `aseqdump` output),
- * written up control by control in docs/19-grv6-midi.md. No vendor MIDI list
+ * written up control by control in docs/port/grv6-midi.md. No vendor MIDI list
  * for the GRV6 was found, so -- the reverse of map_flx4.c's history -- the
  * capture is the only source, and the FLX4 is used only as a comparison.
  *

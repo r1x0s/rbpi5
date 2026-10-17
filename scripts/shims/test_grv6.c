@@ -16,7 +16,7 @@
  *     against the clock: the sign, the windowing, the idle edge, and the
  *     position in FLX4 units (720/rev) including the step below zero.
  *
- * The fixture's numbers are MEASURED (docs/19-grv6-midi.md) except the lines it
+ * The fixture's numbers are MEASURED (docs/port/grv6-midi.md) except the lines it
  * marks "expected"; a pass says the map dispatches those numbers the way its
  * tables say, not that the unit agrees about the expected ones.
  *

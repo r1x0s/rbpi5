@@ -2,7 +2,7 @@
 #
 # A HAND-ASSEMBLED fixture for map_grv6.c. Unlike midi_flx4.dump, every channel,
 # note, CC and value shape below was MEASURED on the unit -- the 2026-10-13
-# capture written up in docs/19-grv6-midi.md -- except the lines marked
+# capture written up in docs/port/grv6-midi.md -- except the lines marked
 # "expected", which stand for controls the capture did not reach. The ORDER and
 # the timestamps are not a recording: the lines are arranged so that each row of
 # test_grv6.c's expectation table comes from exactly one line here, and a line

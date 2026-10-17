@@ -26,7 +26,8 @@ unit up; it is the target document and links out to the rest.
 | 16 | [input-and-hotplug](16-input-and-hotplug.md) | the keyboard map's open defects: the lost key release, the arrow sign, Enter, hot-swap, the FLX4 startup thump |
 | 17 | [rx3-flx4-comparison](17-rx3-flx4-comparison.md) | the sibling port read against this one: `doctor`, the run-time object scan, the firmware's own LED period — and where the sibling is behind. Their read-only USB overlay was read and **discarded**, not a candidate here |
 | 18 | [prodjlink](18-prodjlink.md) | `netshim.so`: rbp's Pro DJ Link stack over `wlan0`, the twelve functions hardcoded to `eth0`, the three interposed calls, the whitelist, and the load-order contract with `fbshim` — **built and host-verified, not deployed** |
-| 19 | [grv6-midi](19-grv6-midi.md) | **this fork**: the DDJ-GRV6's MIDI inventory (measured), compared with the FLX4, the map built from it (`map_grv6.c`, `RB_MIDI_MAP=grv6`), and what is still unmeasured |
+| 19 | [vnc](19-vnc.md) | `vncserve`: rbp's whole screen over VNC, hand-rolled (only libc) because `libvncserver` cannot be handed a JPEG the hardware encoder already made — the `raw` ↔ `hwjpeg` switch, its control page, the macOS 3.3 handshake, and the measured 44× bandwidth win |
+| port | [grv6-midi](port/grv6-midi.md) | **this fork**: the DDJ-GRV6's MIDI inventory (measured), compared with the FLX4, the map built from it (`map_grv6.c`, `RB_MIDI_MAP=grv6`), and what is still unmeasured |
 | port | [pi5-bringup](port/pi5-bringup.md) | **this fork**: the Raspberry Pi 5 bring-up record — the board audit and the gate table, filled in as measured |
 
 There is no document 14: the port plan numbers the FLX4 runbook 15 and defines
