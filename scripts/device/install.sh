@@ -208,6 +208,23 @@ _mounts_under() {
 }
 
 WAS_ACTIVE=0
+RESTARTED=0
+# A player this install stopped is started again even if the install then FAILS
+# (C-051). Every `die` between here and the end -- the chroot self-test, and
+# since the upstream merge (C-049/C-050) the on-unit vncserve compile -- would
+# otherwise leave a working unit silent until someone notices and starts it. The
+# normal path and the refusal path below start it themselves and set RESTARTED.
+_restart_on_failure() {
+  _rc=$?
+  if [ "$_rc" != 0 ] && [ "$WAS_ACTIVE" = 1 ] && [ "$RESTARTED" = 0 ]; then
+    echo "install: the install FAILED after stopping rblive4; starting it again on" \
+         "whatever is now installed" >&2
+    systemctl start rblive4.service || \
+      echo "install: WARNING: rblive4 did not start: systemctl status rblive4" >&2
+  fi
+}
+trap _restart_on_failure EXIT
+
 if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet rblive4.service; then
   WAS_ACTIVE=1
   say "rblive4 is running: stopping it before the unpack (it is started again at the end)"
@@ -227,6 +244,7 @@ if [ -n "$(_mounts_under)" ]; then
     _restarted=""
     if [ "$WAS_ACTIVE" = 1 ]; then
       systemctl start rblive4.service || true
+      RESTARTED=1
       _restarted=" rblive4 was started again."
     fi
     die "the mounts above are still in place, so the tarball was NOT unpacked: it
@@ -932,6 +950,7 @@ else
 fi
 
 if [ "$WAS_ACTIVE" = 1 ]; then
+  RESTARTED=1
   if systemctl start rblive4.service; then
     say "rblive4 started again (it was running when this install began)"
   else
