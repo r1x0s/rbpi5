@@ -167,10 +167,14 @@ static void dev_release(void)
  * This is the only way to tell an overlay from a primary from a cursor: the plane
  * ids are not grouped, and the two we must not steal are the primary the live
  * CRTC is scanning out and the cursor the pointer path may want. */
-static unsigned int plane_type_of(int fd, unsigned int plane_id)
+/* A plane property by NAME: its id and current value. -1 if the plane has no such
+ * property or it cannot be read. */
+static int plane_prop_of(int fd, unsigned int plane_id, const char *name,
+                         unsigned int *prop_id, unsigned long long *value)
 {
     struct drm_mode_obj_get_properties q;
-    unsigned int props[DRM_BAND_MAXFORMATS], vals[DRM_BAND_MAXFORMATS];
+    unsigned int props[DRM_BAND_MAXFORMATS];
+    __u64 vals[DRM_BAND_MAXFORMATS];
     unsigned int i;
 
     memset(props, 0, sizeof props);
@@ -182,7 +186,7 @@ static unsigned int plane_type_of(int fd, unsigned int plane_id)
     q.obj_id          = plane_id;
     q.obj_type        = DRM_MODE_OBJECT_PLANE;
     if (real_ioctl(fd, DRM_IOCTL_MODE_OBJ_GETPROPERTIES, &q) < 0)
-        return 0xffffffffu;
+        return -1;
 
     for (i = 0; i < q.count_props && i < DRM_BAND_MAXFORMATS; i++) {
         struct drm_mode_get_property gp;
@@ -191,17 +195,72 @@ static unsigned int plane_type_of(int fd, unsigned int plane_id)
         gp.prop_id = props[i];
         if (real_ioctl(fd, DRM_IOCTL_MODE_GETPROPERTY, &gp) < 0)
             continue;
-        if (strcmp(gp.name, "type") == 0)
-            return vals[i];
+        if (strcmp(gp.name, name) == 0) {
+            if (prop_id)
+                *prop_id = props[i];
+            if (value)
+                *value = vals[i];
+            return 0;
+        }
     }
-    return 0xffffffffu;
+    return -1;
+}
+
+static unsigned int plane_type_of(int fd, unsigned int plane_id)
+{
+    unsigned long long v;
+
+    if (plane_prop_of(fd, plane_id, "type", NULL, &v) != 0)
+        return 0xffffffffu;
+    return (unsigned int)v;
+}
+
+/* The rotation the PRIMARY plane on crtc `crtc_id` is scanned out with, i.e. what the
+ * kernel's fbdev client set from `video=...,rotate=N`. DRM_MODE_ROTATE_0 when it cannot be
+ * read, so a machine that does not report it behaves exactly as before. */
+static unsigned int primary_rotation(int fd, unsigned int crtc_id)
+{
+    struct drm_mode_get_plane_res pr;
+    unsigned int *ids, i, n, rot = DRM_MODE_ROTATE_0;
+
+    memset(&pr, 0, sizeof pr);
+    if (real_ioctl(fd, DRM_IOCTL_MODE_GETPLANERESOURCES, &pr) < 0 || pr.count_planes == 0)
+        return rot;
+    n = pr.count_planes;
+    ids = calloc(n, sizeof *ids);
+    if (!ids)
+        return rot;
+    pr.plane_id_ptr = (__u64)(uintptr_t)ids;
+    if (real_ioctl(fd, DRM_IOCTL_MODE_GETPLANERESOURCES, &pr) < 0) {
+        free(ids);
+        return rot;
+    }
+    for (i = 0; i < n && i < pr.count_planes; i++) {
+        struct drm_mode_get_plane gp;
+        unsigned long long v;
+
+        memset(&gp, 0, sizeof gp);
+        gp.plane_id = ids[i];
+        if (real_ioctl(fd, DRM_IOCTL_MODE_GETPLANE, &gp) < 0)
+            continue;
+        if (gp.crtc_id != crtc_id)
+            continue;
+        if (plane_type_of(fd, ids[i]) != DRM_PLANE_TYPE_PRIMARY)
+            continue;
+        if (plane_prop_of(fd, ids[i], "rotation", NULL, &v) == 0)
+            rot = (unsigned int)v;
+        break;
+    }
+    free(ids);
+    return rot;
 }
 
 /* The CRTC that is actually scanning something out, and its INDEX -- the index,
  * not the id, because possible_crtcs is a bitmask over the order the ids come
  * back in and not over the ids themselves. On this unit that is crtc[3] /
  * pixelvalve-2 at fb 722, which is rbp's picture. */
-static int live_crtc(int fd, unsigned int *id, unsigned int *index)
+static int live_crtc(int fd, unsigned int *id, unsigned int *index,
+                     int *mode_w, int *mode_h)
 {
     struct drm_mode_card_res res;
     unsigned int *ids, i, n;
@@ -241,6 +300,8 @@ static int live_crtc(int fd, unsigned int *id, unsigned int *index)
         if (c.mode_valid && c.fb_id) {
             *id = ids[i];
             *index = i;
+            *mode_w = c.mode.hdisplay;
+            *mode_h = c.mode.vdisplay;
             free(ids);
             return 0;
         }
@@ -385,7 +446,7 @@ int drm_band_setup(struct drm_band *b, int w, int h, int bpp)
     struct drm_mode_map_dumb md;
     struct drm_mode_fb_cmd fc;
     unsigned int crtc_id, crtc_index, fourcc;
-    int fd;
+    int fd, mode_w = 0, mode_h = 0;
 
     memset(b, 0, sizeof *b);
     b->fd = -1;
@@ -415,7 +476,7 @@ int drm_band_setup(struct drm_band *b, int w, int h, int bpp)
     }
     b->fd = fd;
 
-    if (live_crtc(fd, &crtc_id, &crtc_index) != 0) {
+    if (live_crtc(fd, &crtc_id, &crtc_index, &mode_w, &mode_h) != 0) {
         pointsrc_log("menu plane: no CRTC on %s is scanning anything out",
                      DRM_BAND_CARD);
         drm_band_teardown(b);
@@ -435,6 +496,30 @@ int drm_band_setup(struct drm_band *b, int w, int h, int bpp)
     plane_take(b->plane);
     g_dev.want_rank = 0;
     b->crtc = crtc_id;
+    b->disp_w = mode_w;
+    b->disp_h = mode_h;
+
+    /* Follow the primary's rotation -- see drm_band_rot180_rect() in drmband.h. Only 180 is
+     * handled: it is the one that keeps the logical size, so every band's geometry stands. If the
+     * plane refuses the property the band is left unrotated (the picture before this change) and
+     * the log says so. */
+    if (primary_rotation(fd, crtc_id) & DRM_MODE_ROTATE_180) {
+        struct drm_mode_obj_set_property sp;
+        unsigned int rot_prop;
+
+        memset(&sp, 0, sizeof sp);
+        if (plane_prop_of(fd, b->plane, "rotation", &rot_prop, NULL) == 0) {
+            sp.value    = DRM_MODE_ROTATE_180;
+            sp.prop_id  = rot_prop;
+            sp.obj_id   = b->plane;
+            sp.obj_type = DRM_MODE_OBJECT_PLANE;
+            if (real_ioctl(fd, DRM_IOCTL_MODE_OBJ_SETPROPERTY, &sp) == 0)
+                b->rot180 = 1;
+        }
+        pointsrc_log("menu plane: primary is rotated 180 on crtc %u (%dx%d); plane %u %s",
+                     crtc_id, mode_w, mode_h, b->plane,
+                     b->rot180 ? "follows it" : "could NOT be rotated -- it will show inverted");
+    }
 
     memset(&cd, 0, sizeof cd);
     cd.width  = (__u32)w;
@@ -524,6 +609,7 @@ int drm_band_show_rect(struct drm_band *b, int sx, int sy, int sw, int sh,
                        int x, int y, int w, int h)
 {
     struct drm_mode_set_plane sp;
+    int cx, cy;
 
     if (b->fd < 0 || !b->pix)
         return -1;
@@ -531,8 +617,12 @@ int drm_band_show_rect(struct drm_band *b, int sx, int sy, int sw, int sh,
     sp.plane_id = b->plane;
     sp.crtc_id  = b->crtc;
     sp.fb_id    = b->fb;
-    sp.crtc_x   = (__s32)x;
-    sp.crtc_y   = (__s32)y;
+    cx = x;
+    cy = y;
+    if (b->rot180)
+        drm_band_rot180_rect(b->disp_w, b->disp_h, w, h, &cx, &cy);
+    sp.crtc_x   = (__s32)cx;
+    sp.crtc_y   = (__s32)cy;
     sp.crtc_w   = (__u32)w;
     sp.crtc_h   = (__u32)h;
     sp.src_x    = (__u32)sx << 16;

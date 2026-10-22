@@ -663,7 +663,7 @@ TESTS := test_point test_audio test_midi test_flx4 test_grv6 test_kbd test_curso
          test_menu_dev test_util test_wave test_fx test_hc test_fxpad \
          test_led_table test_plinn_scan test_controllers test_usblabel test_netalias \
          test_pitch test_keylog test_padmode test_deckbadge test_bpmbox \
-         test_settings test_align test_beatsync
+         test_settings test_align test_beatsync test_drmband
 
 test_point: test_point.c tscfake.c point_xform.c touch_zone.c $(FBSHIM_HDRS)
 	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
@@ -911,6 +911,11 @@ test_deckbadge: test_deckbadge.c deckbadge_zone.c deckbadge_zone.h \
 test_bpmbox: test_bpmbox.c bpmbox_zone.c bpmbox_zone.h
 	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
 	    -Wall -Wextra -static -o $@ test_bpmbox.c bpmbox_zone.c
+
+# test_drmband pins the rotate-180 placement of an overlay (drmband.h); header only.
+test_drmband: test_drmband.c drmband.h
+	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
+	    -Wall -Wextra -static -o $@ test_drmband.c
 
 
 # test_fxpad links the PRODUCTION fxpad_zone.c AND fxpad_paint.c -- test_fx.c and

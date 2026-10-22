@@ -258,8 +258,30 @@ struct drm_band {
     int           bpp;
     int           master;       /* the SHARED device holds DRM master (drmband.c) */
     int           on;           /* the plane is currently scanning out our buffer */
-    int           on_x, on_y;   /* ...at this crtc position */
+    int           on_x, on_y;   /* ...at this crtc position, in rbp's LOGICAL coordinates */
+    int           rot180;       /* the plane is set to ROTATE_180 to follow the primary */
+    int           disp_w, disp_h; /* the live mode, the frame rot180 mirrors positions in */
 };
+
+/* THE PANEL IS MOUNTED UPSIDE DOWN ON SOME UNITS, and the kernel turns the picture back:
+ * `video=HDMI-A-2:1280x800@60,rotate=180` makes the fbdev client scan rbp's primary plane out
+ * with rotation=ROTATE_180 (measured on the Pi 5 unit, 2026-10-22: primary plane rotation=4).
+ * That rotates the PRIMARY only. An overlay put at rbp's logical (x, y) with rotation 0 lands
+ * at the mirrored place on the glass and upside down -- the deck badge of deck 1 (11,584) showed
+ * as an inverted "1 DECK" over the BEAT FX panel. So when the primary is turned, every band is
+ * turned with it and its crtc rectangle is mirrored inside the mode. The src rectangle is NOT
+ * touched: it addresses the buffer, and the rotation is applied to what it selects.
+ *
+ * Pure, so it is pinned by test_drmband without a DRM device. */
+#define DRM_MODE_ROTATE_0    (1u << 0)
+#define DRM_MODE_ROTATE_180  (1u << 2)
+
+static inline void drm_band_rot180_rect(int disp_w, int disp_h, int w, int h,
+                                        int *x, int *y)
+{
+    *x = disp_w - *x - w;
+    *y = disp_h - *y - h;
+}
 
 /* Open /dev/dri/card1, find the live CRTC, take an overlay plane on it that can
  * carry `bpp`, create a w x h buffer and map it. Takes DRM master here -- once per
