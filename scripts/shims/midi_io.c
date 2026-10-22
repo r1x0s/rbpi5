@@ -618,26 +618,20 @@ int midi_cc(int midi_ch, int cc, int val)
 }
 
 /* Ask the panel to report every absolute control (faders/knobs) -- Engine OS
- * does this at startup (`queryAbsoluteControls()` in JP21_Controller_Device.qml).
- * Without it the fader positions are unknown until first moved, which made the
- * channel meters ignore the fader.
+ * does this at startup (`queryAbsoluteControls()` in JP21_Controller_Device.qml),
+ * and so does rekordbox/Mixxx for the FLX4. Without it the positions are unknown
+ * until each control is first moved.
  *
- * This is a JP21 protocol message, and the sequencer route carries only the
- * three-byte LED/meter messages, so it goes out on rawmidi or not at all. A
- * surface matched by name (the FLX4) has no absolute controls to report and no
- * meters to light, so "not at all" is the correct outcome there.
- *
- * THE BYTES ARE NO LONGER HERE. They are the JP21 row's `init` in the controller
- * table (controllers.c), which is the one place a surface's own facts are
- * written down; this function looked the row up rather than carrying a copy, so
- * the message and the table cannot drift. The lookup is by id and the id is the
- * only thing named here, because the raw route IS the answer to "which surface
- * is on the other end" -- nothing matched it by name.
- *
- * This is also the only consumer of `init`, and that is why no surface's init is
- * sent at startup as well: for the FLX4 it is NULL, and for the JP21 a second
- * sender would put this query on whatever route happened to be up, which with a
- * FLX4 attached and MIDI_MAP=jp21 would be the FLX4's own port.
+ * THE BYTES ARE NOT HERE: they are the surface row's `init` in the controller
+ * table (controllers.c), the one place a surface's own facts are written down.
+ * Two routes, two rows:
+ *   - a surface subscribed BY NAME on the sequencer route (the FLX4) is asked with
+ *     ITS OWN row's query, sent as a sequencer SysEx -- the path the keepalive
+ *     uses. The row is the one physically on the other end (surface_name), so a
+ *     query can never reach the wrong device;
+ *   - on the rawmidi route, which is the JP21's and nothing matched it by name,
+ *     the JP21 row's query, looked up by id.
+ * A by-name surface whose row has no query falls through to "not sent".
  *
  * Returns whether the query went out, which is a different question from
  * whether the panel will answer: rbp_vu.c reads the 0 as "nobody is going to
@@ -654,8 +648,7 @@ int led_query_absolute(void)
      /* A surface subscribed BY NAME on the sequencer route asks with its OWN row's
       * query, if it has one -- the FLX4's, measured 2026-10-22 (controllers.c).
       * The row is the one physically on the other end (surface_name), for the
-      * keepalive's reason, so a JP21 query can never reach an FLX4. The SysEx goes
-      * out the way the keepalive does; the comment above predates that path. */
+      * keepalive's reason, so a JP21 query can never reach an FLX4. */
      if (out_route == ROUTE_SEQ) {
           const struct controller *c = controllers_by_hint(surface_name);
           if (c && c->init && c->init_len > 0)
