@@ -458,11 +458,11 @@ static const struct expect expect[] = {
       * the send channel is CH_GLOBAL even though the events are on ch 6. */
      { 0, K_SELECTOR,       OP_PRESS,   1, 0,    0.0f, 0, 0 },
      { 0, K_SELECTOR,       OP_RELEASE, 1, 0,    0.0f, 0, 0 },
-     /* SHIFT + the same push is BACK instead -- a different keycode on the
-      * same note's shift variant, which is the whole reason the map binds the
-      * shift note separately rather than tracking a SHIFT state. */
-     { 0, K_BACK,           OP_PRESS,   1, 0,    0.0f, 0, 0 },
-     { 0, K_BACK,           OP_RELEASE, 1, 0,    0.0f, 0, 0 },
+     /* SHIFT + the same push leaves the browser: BROWSE, press and release both
+      * on the press edge (the screen stub is not the performance screen), and the
+      * release sends nothing. */
+     { 0, K_BROWSE,         OP_PRESS,   1, 0,    0.0f, 0, 0 },
+     { 0, K_BROWSE,         OP_RELEASE, 1, 0,    0.0f, 0, 0 },
      { 0, K_SELECTOR,       OP_ROTATE,  1, 1,    0.0f, 0, 0 },
      { 0, K_SELECTOR,       OP_ROTATE,  1, -1,   0.0f, 0, 0 },
      /* 63 and 64: the encoder's direction split. This is the unit's only 63/64
@@ -503,10 +503,10 @@ static const struct expect expect[] = {
      /* The headphone knobs also land in g_cue_mix / g_cue_gain, asserted below. */
      { 1, K_HPMIX,          OP_VALUE,   1, 516,  516.0f / 1023.0f, 0, 0 },
      { 1, K_HPLEVEL,        OP_VALUE,   1, 0,    0.0f, 0, 0 },
-     /* SMART CFX steps the CFX type from Filter to Space (one press and release,
-      * rbp ch 1); SMART FADER is SOURCE (the fixture sends no NOTEOFF). */
-     { 0, K_SPACE,          OP_PRESS,   1, 0,    0.0f, 0, 0 },
-     { 0, K_SPACE,          OP_RELEASE, 1, 0,    0.0f, 0, 0 },
+     /* SMART CFX toggles CFX: it presses the current type, Filter (one press and
+      * release, rbp ch 1); SMART FADER is SOURCE (the fixture sends no NOTEOFF). */
+     { 0, K_FILTER,         OP_PRESS,   1, 0,    0.0f, 0, 0 },
+     { 0, K_FILTER,         OP_RELEASE, 1, 0,    0.0f, 0, 0 },
      { 0, K_SOURCE,         OP_PRESS,   1, 0,    0.0f, 0, 0 },
 
      /* ---- Beat FX ---- */
@@ -907,19 +907,28 @@ static void check_browse_split(void)
            "SHIFT + CUE/LOOP CALL < / > sent %d keycode(s), expected BACK then MEMORY",
            sent_n);
 
-     /* SMART CFX after the fixture's one press: the cursor is on Space. SHIFT +
-      * SMART CFX presses Space again (off); a second SHIFT press sends nothing (it
-      * is already off); the next SMART CFX brings Space back rather than stepping;
-      * and the one after that steps to Dub Echo. */
+     /* SMART CFX after the fixture's one press: Filter is off. SHIFT + SMART CFX
+      * steps to Space (on), again to Dub Echo; then SMART CFX presses Dub Echo
+      * twice -- off, and on again. */
      sent_n = 0;
      send_note(6, 8, 127);
      send_note(6, 8, 127);
      send_note(6, 0, 127);
      send_note(6, 0, 127);
-     CHECK(sent_n == 6 && sent_is(0, K_SPACE, OP_PRESS, 1, 0) &&
+     CHECK(sent_n == 8 && sent_is(0, K_SPACE, OP_PRESS, 1, 0) &&
            sent_is(1, K_SPACE, OP_RELEASE, 1, 0) &&
-           sent_is(2, K_SPACE, OP_PRESS, 1, 0) && sent_is(4, K_DUBECHO, OP_PRESS, 1, 0),
-           "the SMART CFX off/on/step sequence sent %d keycode(s)", sent_n);
+           sent_is(2, K_DUBECHO, OP_PRESS, 1, 0) && sent_is(4, K_DUBECHO, OP_PRESS, 1, 0) &&
+           sent_is(6, K_DUBECHO, OP_PRESS, 1, 0),
+           "the SMART CFX step/step/off/on sequence sent %d keycode(s)", sent_n);
+
+     /* SHIFT + browse push on the performance screen sends nothing: there is no
+      * browser to leave, and a BROWSE would open one. */
+     sent_n = 0;
+     browse_mode = BROWSE_MODE_PLAY;
+     send_note(6, 66, 127);
+     CHECK(sent_n == 0, "SHIFT + browse push on the performance screen sent %d keycode(s)",
+           sent_n);
+     browse_mode = 3;
 }
 
 static void check_mastervol(void)

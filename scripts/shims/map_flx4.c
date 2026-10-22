@@ -389,22 +389,22 @@ static void flx4_log_only(int ch, int note)
           klog("knobshim2: ch%d note%d (log-only)\n", ch, note);
 }
 
-/* SMART CFX -> the RX3's six Sound Color FX type buttons, one step per press.
+/* SMART CFX -> the RX3's six Sound Color FX type buttons.
  *
  * rbp's CFX type is ONE selection for the whole mixer -- its LED (LedStat 41,
  * CfxFilter) has no channel -- and pressing the type that is already on turns it
- * off, as on the RX3's panel. So:
- *   - SMART CFX selects the next type (Filter -> Space -> Dub Echo -> Sweep ->
- *     Noise -> Crush -> Filter), or, if SHIFT turned CFX off, brings the same
- *     type back;
- *   - SHIFT + SMART CFX presses the current type again: CFX off.
+ * off, as on the RX3's panel. So (operator's layout, 2026-10-22):
+ *   - SMART CFX toggles CFX: it presses the current type, which switches it off,
+ *     or back on;
+ *   - SHIFT + SMART CFX selects the next type (Filter -> Space -> Dub Echo ->
+ *     Sweep -> Noise -> Crush -> Filter), which also switches CFX on.
  * The cursor starts on Filter because flx4_startup() selects it. One press, on
  * rbp channel 1: the selection is global, so a second press on channel 2 would
  * be the "same type again" that switches it off. */
 static const int cfx_cycle[] = { K_FILTER, K_SPACE, K_DUBECHO, K_SWEEP, K_NOISE, K_CRUSH };
 #define CFX_CYCLE_N ((int)(sizeof cfx_cycle / sizeof cfx_cycle[0]))
 static int cfx_pos;            /* index into cfx_cycle: what rbp has selected */
-static int cfx_off;            /* SHIFT + SMART CFX switched it off */
+static int cfx_off;            /* SMART CFX switched it off */
 
 static void cfx_press(int key)
 {
@@ -415,21 +415,33 @@ static void cfx_press(int key)
 static void flx4_cfx_button(int shift)
 {
      if (shift) {
-          if (!cfx_off)
-               cfx_press(cfx_cycle[cfx_pos]);
-          cfx_off = 1;
-     } else {
-          if (!cfx_off)
-               cfx_pos = (cfx_pos + 1) % CFX_CYCLE_N;
-          cfx_press(cfx_cycle[cfx_pos]);
+          cfx_pos = (cfx_pos + 1) % CFX_CYCLE_N;
           cfx_off = 0;
+     } else {
+          cfx_off = !cfx_off;
      }
+     cfx_press(cfx_cycle[cfx_pos]);
      klog("knobshim2: SMART CFX -> type %d (0x%04x)%s\n", cfx_pos,
           cfx_cycle[cfx_pos], cfx_off ? " off" : "");
 }
 
 static void flx4_note(int ch, int note, int on)
 {
+     /* SHIFT + browse push: OUT of the browser, back to the performance screen --
+      * rbp's BROWSE key, which closes the screen it opens (the RX3's own BROWSE
+      * button toggles). On the performance screen it does nothing: a BROWSE there
+      * would open the browser, which the plain browse turn already does. BACK
+      * (one level up inside the browser) is SHIFT + CUE/LOOP CALL <. */
+     if (ch == CH_MIX && note == N_BROWSE_PUSH_SHIFT) {
+          if (on && rbp_browse_mode() != BROWSE_MODE_PLAY) {
+               send_rx_key(K_BROWSE, OP_PRESS, CH_GLOBAL, 0);
+               send_rx_key(K_BROWSE, OP_RELEASE, CH_GLOBAL, 0);
+               if (verbose)
+                    klog("knobshim2: SHIFT + browse push -> BROWSE (leave the browser)\n");
+          }
+          return;
+     }
+
      if (ch == CH_MIX && (note == N_SMART_CFX || note == N_SMART_CFX_SHIFT)) {
           if (on)
                flx4_cfx_button(note == N_SMART_CFX_SHIFT);
@@ -1118,10 +1130,11 @@ static void flx4_build(void)
      add_abs(CH_MIX, CC_HP_MIX, K_HPMIX, CH_GLOBAL);      /* -> g_cue_mix */
      add_abs(CH_MIX, CC_HP_LEVEL, K_HPLEVEL, CH_GLOBAL);  /* -> g_cue_gain */
      add_note(CH_MIX, N_BROWSE_PUSH, K_SELECTOR, CH_GLOBAL);
-     /* SHIFT + browse push -> BACK since 2026-10-22 (operator's ask: the natural
-      * "out of the browser" gesture); SOURCE moved to SMART FADER below. SHIFT +
-      * CUE/LOOP CALL < stays BACK as well. What follows is why SOURCE needed a
-      * button at all, and it still holds for SMART FADER:
+     /* SHIFT + browse push LEAVES THE BROWSER since 2026-10-22 (operator's ask):
+      * it is handled ahead of the table in flx4_note(), and this row only keeps the
+      * note known. SOURCE moved to SMART FADER below; BACK is SHIFT + CUE/LOOP
+      * CALL <. What follows is why SOURCE needed a button at all, and it still
+      * holds for SMART FADER:
       *
       * The row the whole port needed: **the FLX4 has no SOURCE button and no BROWSE button**, and
       * rbp has no on-screen SOURCE target on the deck screen, so without it
@@ -1139,7 +1152,7 @@ static void flx4_build(void)
       * sequencer port tests the first on the unit; a press on the real button
       * with MIDI_DUMP on measures the second, and a wrong number there shows up
       * as an unmapped note in the KNOB_VERBOSE log rather than as a mystery. */
-     add_note(CH_MIX, N_BROWSE_PUSH_SHIFT, K_BACK, CH_GLOBAL);
+     add_note(CH_MIX, N_BROWSE_PUSH_SHIFT, 0, CH_GLOBAL);
      /* LOAD streams on the global channel, as it does in map_jp21.c: rbp's
       * browse/Load keys are global, and the deck is in the send channel. */
      add_note(CH_MIX, N_LOAD1, K_LOAD, 1);
