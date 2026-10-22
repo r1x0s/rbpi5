@@ -78,13 +78,13 @@ struct controller {
      /* The surface's OWN SysEx message, or NULL. The shim decides when it goes
       * out, and two surfaces want opposite things from it:
       *
-      *   - the FLX4 has none (NULL). What keeps it talking is `keepalive`,
-      *     below, and that is a poll rather than a greeting.
-      *   - the JP21's is an absolute-value QUERY: Engine OS sends it at startup
-      *     and this port re-asks it whenever rbp's fader positions are unknown
-      *     (rbp_vu.c's calls to led_query_absolute()). It went out only on the
-      *     rawmidi route even before this table existed, because the sequencer
-      *     route carries three-byte LED/meter messages and nothing else.
+      *   - the JP21's and (since 2026-10-22, measured) the FLX4's are an
+      *     absolute-value QUERY: the panel answers with every absolute control's
+      *     position. It goes out at startup and again whenever rbp's fader
+      *     positions are unknown (rbp_vu.c's calls to led_query_absolute()) -- on
+      *     the rawmidi route for the JP21, and as a sequencer SysEx (the path the
+      *     keepalive uses) to the surface subscribed by name.
+      *   - a surface with none (NULL) is seeded blind instead.
       */
      const unsigned char *init;
      unsigned init_len;

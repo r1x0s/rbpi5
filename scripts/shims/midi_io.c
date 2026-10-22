@@ -651,6 +651,17 @@ int led_query_absolute(void)
       * about what the *panel* last reported, and we no longer know. */
      ctrl_abs_invalidate();
 
+     /* A surface subscribed BY NAME on the sequencer route asks with its OWN row's
+      * query, if it has one -- the FLX4's, measured 2026-10-22 (controllers.c).
+      * The row is the one physically on the other end (surface_name), for the
+      * keepalive's reason, so a JP21 query can never reach an FLX4. The SysEx goes
+      * out the way the keepalive does; the comment above predates that path. */
+     if (out_route == ROUTE_SEQ) {
+          const struct controller *c = controllers_by_hint(surface_name);
+          if (c && c->init && c->init_len > 0)
+               return midi_sysex_out(c->init, c->init_len);
+     }
+
      if (out_route != ROUTE_RAW || led_fd < 0) {
           if (out_route == ROUTE_SEQ && !told) {
                told = 1;

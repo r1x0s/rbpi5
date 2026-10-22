@@ -420,8 +420,14 @@ static void test_sysex(void)
         CHECK(f && f->keepalive_ms == 200,
               "the FLX4's keepalive period must be 200 ms, not %u",
               f ? f->keepalive_ms : 0);
-        CHECK(f && f->init == NULL && f->init_len == 0,
-              "the FLX4 has no SysEx of its own; a poll is not a greeting");
+        {
+            static const unsigned char q[12] = {
+                0xF0, 0x00, 0x40, 0x05, 0x00, 0x00, 0x04, 0x05, 0x00, 0x03, 0x01, 0xF7
+            };
+            CHECK(f && f->init_len == sizeof q && memcmp(f->init, q, sizeof q) == 0,
+                  "the FLX4's absolute-value query must be the twelve bytes the "
+                  "unit answered on 2026-10-22");
+        }
     }
 
     /* The JP21's absolute-value query: this port's own bytes, moved here out of

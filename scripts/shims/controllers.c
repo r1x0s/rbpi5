@@ -28,6 +28,22 @@ static const unsigned char sysex_flx4_keepalive[] = {
      0xF0, 0x00, 0x40, 0x05, 0x00, 0x00, 0x04, 0x05, 0x00, 0x50, 0x02, 0xF7
 };
 
+/* ---- the FLX4's absolute-value query ----
+ *
+ * MEASURED ON THE PI 5 UNIT 2026-10-22: sent to 'DDJ-FLX4 MIDI 1' with aseqsend,
+ * the panel answered with 42 messages -- every trim/EQ/fader/tempo MSB+LSB pair,
+ * the crossfader, both CFX knobs, the Beat FX depth on ch 4/5, note 23 (vinyl)
+ * per deck and the FX CH SELECT lever's legs (notes 16/17 on ch 4/5). It is the
+ * DDJ-400 query Mixxx's script sends, with the FLX4's model bytes (04 05, the
+ * keepalive's) in place of the 400's (02 06); the 400's own bytes, and 50 01 /
+ * 50 03 / 06 01 in the last two places, drew no answer. Without it rbp keeps its
+ * built-in defaults until each control is first moved: the Beat FX target sat on
+ * CH1 while the lever was elsewhere, so the effect "did nothing" until the lever
+ * was flicked, and the channel faders had to be seeded blind. */
+static const unsigned char sysex_flx4_query[] = {
+     0xF0, 0x00, 0x40, 0x05, 0x00, 0x00, 0x04, 0x05, 0x00, 0x03, 0x01, 0xF7
+};
+
 /* ---- the JP21's absolute-value query ----
  *
  * This port's OWN bytes, moved here verbatim from midi_io.c's
@@ -61,7 +77,7 @@ static const struct controller table[] = {
           "FLX4",
           "DDJFLX4",
           "flx4",
-          NULL, 0,                                  /* no SysEx of its own */
+          sysex_flx4_query, sizeof sysex_flx4_query,  /* absolute-value query */
           sysex_flx4_keepalive, sizeof sysex_flx4_keepalive, 200,
           0, NULL,                                  /* a surface, not a mixer */
      },

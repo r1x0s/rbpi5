@@ -543,20 +543,20 @@ static void flx4_note(int ch, int note, int on)
           else
                return;                 /* mid-slide: both legs momentarily off */
 
-          if (pos == fxch_pos)
-               return;                 /* the whole group is re-sent on every
-                                        * move; only a change is a move */
-          fxch_pos = pos;
           /* CH1&CH2 -> MASTER, the two single positions -> their own player.
-           * TODO: unverified -- nothing on the unit says which position the
-           * lever is in at connect, so this acts on the first message that
-           * names a position, whether that is a move or the device's own
-           * state. */
+           * SENT ON EVERY MESSAGE THAT NAMES A POSITION, not only on a change:
+           * the lever's position at connect now arrives in the reply to the
+           * absolute-value query (controllers.c, measured 2026-10-22), which is
+           * repeated while rbp finishes initialising -- a first reply that lands
+           * before rbp's effect engine would otherwise be the only send, and lost.
+           * K_BFXCH is a value, so a repeat is a no-op. Only a change is logged. */
           int want = (pos == 2) ? BFX_CH_MASTER : pos;
           send_rx_key(K_BFXCH, OP_VALUE, CH_GLOBAL, want);
-          klog("knobshim2: FX CH SELECT -> Beat FX target %s\n",
-               pos == 2 ? "MASTER (5)" :
-               (pos == 0 ? "deck 1 (0)" : "deck 2 (1)"));
+          if (pos != fxch_pos)
+               klog("knobshim2: FX CH SELECT -> Beat FX target %s\n",
+                    pos == 2 ? "MASTER (5)" :
+                    (pos == 0 ? "deck 1 (0)" : "deck 2 (1)"));
+          fxch_pos = pos;
           return;
      }
 
@@ -1253,9 +1253,9 @@ static void flx4_startup(void)
       * MASTER, which map_jp21.c does because its assign knob is a position
       * encoder with no state of its own. This unit's FX CH SELECT is a lever,
       * and rbp gets its position from the lever's notes -- see the FX CH SELECT
-      * handler. Until the lever is moved, rbp keeps whatever target it built
-      * itself with. TODO: unverified -- what rbp's default target is, and
-      * whether the unit reports the lever's resting position at connect. */
+      * handler. The resting position at connect comes from the panel's reply to
+      * the absolute-value query (measured 2026-10-22; before that, rbp kept its
+      * own default target, CH1, until the lever was moved). */
 }
 
 /* The one thing this map has that is about time: the jog's idle edge. */
