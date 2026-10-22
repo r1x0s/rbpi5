@@ -68,7 +68,8 @@
  *     are application settings, not panel controls (the VINYL MODE LED is even
  *     documented as something the *application* sets -- see the LED block);
  *   - the Sound Color FX TYPE (the unit has CFX knobs but no CFX buttons), which
- *     is why flx4_startup() picks Filter for both channels;
+ *     is why flx4_startup() picks Filter -- and why SMART CFX, a rekordbox
+ *     feature rbp lacks, now steps through rbp's six types (flx4_cfx_button());
  *   - the unit's extra pad modes: rbp has four and this section has more, so
  *     KEYBOARD, PAD FX 2, BEAT LOOP and KEY SHIFT reach nothing at all (see the
  *     pad block in flx4_build());
@@ -214,8 +215,9 @@
  * may be moved to the other's channel. 122 is used nowhere else in this map. */
 #define N_LOAD1_SHIFT 104 /* SHIFT + LOAD deck 1 -> rbp's TRACK FILTER panel */
 #define N_LOAD2_SHIFT 122 /* SHIFT + LOAD deck 2 -> rbp's SHORTCUT view */
-#define N_SMART_CFX   0   /* SMART CFX          (+SHIFT 8)  -- no rbp equivalent */
-#define N_SMART_FADER 1   /* SMART FADER        (+SHIFT 9)  -- no rbp equivalent */
+#define N_SMART_CFX   0   /* SMART CFX          (+SHIFT 8)  -> CFX type cycle, see flx4_cfx_button() */
+#define N_SMART_CFX_SHIFT 8
+#define N_SMART_FADER 1   /* SMART FADER        (+SHIFT 9)  -> SOURCE (rekordbox's feature has no rbp equivalent) */
 #define N_MONO_STEREO 109 /* Android MONO/STEREO            -- no rbp equivalent */
 
 /* ---- Beat FX (list ch 5, with a second leg on ch 6) --------------------- */
@@ -387,8 +389,53 @@ static void flx4_log_only(int ch, int note)
           klog("knobshim2: ch%d note%d (log-only)\n", ch, note);
 }
 
+/* SMART CFX -> the RX3's six Sound Color FX type buttons, one step per press.
+ *
+ * rbp's CFX type is ONE selection for the whole mixer -- its LED (LedStat 41,
+ * CfxFilter) has no channel -- and pressing the type that is already on turns it
+ * off, as on the RX3's panel. So:
+ *   - SMART CFX selects the next type (Filter -> Space -> Dub Echo -> Sweep ->
+ *     Noise -> Crush -> Filter), or, if SHIFT turned CFX off, brings the same
+ *     type back;
+ *   - SHIFT + SMART CFX presses the current type again: CFX off.
+ * The cursor starts on Filter because flx4_startup() selects it. One press, on
+ * rbp channel 1: the selection is global, so a second press on channel 2 would
+ * be the "same type again" that switches it off. */
+static const int cfx_cycle[] = { K_FILTER, K_SPACE, K_DUBECHO, K_SWEEP, K_NOISE, K_CRUSH };
+#define CFX_CYCLE_N ((int)(sizeof cfx_cycle / sizeof cfx_cycle[0]))
+static int cfx_pos;            /* index into cfx_cycle: what rbp has selected */
+static int cfx_off;            /* SHIFT + SMART CFX switched it off */
+
+static void cfx_press(int key)
+{
+     send_rx_key(key, OP_PRESS, 1, 0);
+     send_rx_key(key, OP_RELEASE, 1, 0);
+}
+
+static void flx4_cfx_button(int shift)
+{
+     if (shift) {
+          if (!cfx_off)
+               cfx_press(cfx_cycle[cfx_pos]);
+          cfx_off = 1;
+     } else {
+          if (!cfx_off)
+               cfx_pos = (cfx_pos + 1) % CFX_CYCLE_N;
+          cfx_press(cfx_cycle[cfx_pos]);
+          cfx_off = 0;
+     }
+     klog("knobshim2: SMART CFX -> type %d (0x%04x)%s\n", cfx_pos,
+          cfx_cycle[cfx_pos], cfx_off ? " off" : "");
+}
+
 static void flx4_note(int ch, int note, int on)
 {
+     if (ch == CH_MIX && (note == N_SMART_CFX || note == N_SMART_CFX_SHIFT)) {
+          if (on)
+               flx4_cfx_button(note == N_SMART_CFX_SHIFT);
+          return;
+     }
+
      /* CH CUE (list ch 1/2 note 84): rbp's XDJ panel has no per-channel PFL
       * keycode, so this drives the mixer engine directly -- the same call
       * map_jp21.c makes for the previous unit's PFL button. Latching: decided
@@ -1071,8 +1118,12 @@ static void flx4_build(void)
      add_abs(CH_MIX, CC_HP_MIX, K_HPMIX, CH_GLOBAL);      /* -> g_cue_mix */
      add_abs(CH_MIX, CC_HP_LEVEL, K_HPLEVEL, CH_GLOBAL);  /* -> g_cue_gain */
      add_note(CH_MIX, N_BROWSE_PUSH, K_SELECTOR, CH_GLOBAL);
-     /* SHIFT + browse push -> rbp's SOURCE screen. This is the row the whole
-      * port needed: **the FLX4 has no SOURCE button and no BROWSE button**, and
+     /* SHIFT + browse push -> BACK since 2026-10-22 (operator's ask: the natural
+      * "out of the browser" gesture); SOURCE moved to SMART FADER below. SHIFT +
+      * CUE/LOOP CALL < stays BACK as well. What follows is why SOURCE needed a
+      * button at all, and it still holds for SMART FADER:
+      *
+      * The row the whole port needed: **the FLX4 has no SOURCE button and no BROWSE button**, and
       * rbp has no on-screen SOURCE target on the deck screen, so without it
       * there is no way to reach the USB stick from this surface at all -- the
       * browse knob can navigate a list but cannot open one. The pointer path
@@ -1088,7 +1139,7 @@ static void flx4_build(void)
       * sequencer port tests the first on the unit; a press on the real button
       * with MIDI_DUMP on measures the second, and a wrong number there shows up
       * as an unmapped note in the KNOB_VERBOSE log rather than as a mystery. */
-     add_note(CH_MIX, N_BROWSE_PUSH_SHIFT, K_SOURCE, CH_GLOBAL);
+     add_note(CH_MIX, N_BROWSE_PUSH_SHIFT, K_BACK, CH_GLOBAL);
      /* LOAD streams on the global channel, as it does in map_jp21.c: rbp's
       * browse/Load keys are global, and the deck is in the send channel. */
      add_note(CH_MIX, N_LOAD1, K_LOAD, 1);
@@ -1106,12 +1157,15 @@ static void flx4_build(void)
       * row to add_note() will get 0 px and no error. */
      add_note_repeat(CH_MIX, N_LOAD1_SHIFT, K_TRACKFILTER, CH_GLOBAL);
      add_note(CH_MIX, N_LOAD2_SHIFT, K_SHORTCUT, CH_GLOBAL);
-     /* Known, deliberately not routed (key 0): rekordbox's SMART CFX and SMART
-      * FADER and the Android MONO/STEREO output switch have no rbp equivalent
-      * (MONO is the mono sum of both channels, not the L=cue/R=master split
-      * rbp's stereo type means, so it is not me_set_stereo()). */
+     /* SMART CFX is handled ahead of the table (flx4_cfx_button()); its row stays
+      * so the note is known. SMART FADER, a rekordbox feature rbp has no
+      * equivalent of, is SOURCE since 2026-10-22: SHIFT + browse push, which
+      * carried it, became BACK (operator's ask). The Android MONO/STEREO switch
+      * stays unrouted (MONO is the mono sum of both channels, not the
+      * L=cue/R=master split rbp's stereo type means, so it is not
+      * me_set_stereo()). */
      add_note(CH_MIX, N_SMART_CFX, 0, CH_GLOBAL);
-     add_note(CH_MIX, N_SMART_FADER, 0, CH_GLOBAL);
+     add_note(CH_MIX, N_SMART_FADER, K_SOURCE, CH_GLOBAL);
      add_note(CH_MIX, N_MONO_STEREO, 0, CH_GLOBAL);
      /* And the control this map deliberately does not route to rbp: MASTER LEVEL
       * (CC 8 + CC 40) is the unit's own output volume, which sits after the USB
@@ -1157,13 +1211,16 @@ static void flx4_startup(void)
       * it is the one effect a single knob can express without a parameter.
       * TODO: unverified -- with no way to change it from the unit, this is a
       * fixed choice, not something the operator can correct. */
-     send_rx_key(K_FILTER, OP_PRESS, 1, 0);
-     send_rx_key(K_FILTER, OP_RELEASE, 1, 0);
-     send_rx_key(K_FILTER, OP_PRESS, 2, 0);
-     send_rx_key(K_FILTER, OP_RELEASE, 2, 0);
+     /* ONE press. The type is a single selection for the mixer (its LED has no
+      * channel), and pressing the selected type again turns it off -- so the
+      * second press this used to send on channel 2 switched Filter straight back
+      * off and left both CFX knobs dead (measured on the Pi 5 unit, 2026-10-22). */
+     cfx_press(K_FILTER);
+     cfx_pos = 0;
+     cfx_off = 0;
      send_rx_key_f(K_COLOR, OP_VALUE, 1, 512, 0.5f);
      send_rx_key_f(K_COLOR, OP_VALUE, 2, 512, 0.5f);
-     klog("knobshim2: Sound Color FX initialized to Filter on Ch1 & Ch2\n");
+     klog("knobshim2: Sound Color FX initialized to Filter (one global selection)\n");
 
      /* rbp's internal master level to unity, for the reason in flx4_build()'s
       * note on MASTER LEVEL: the unit's own knob is the master volume, so rbp's
@@ -1379,9 +1436,11 @@ static const struct led_notes flx4_leds = {
      .master_ch_count = 1,
      .n_master_cue = 99,
 
-     .fx_ch = -1,              /* pending: the unit HAS Beat FX ON/OFF (note 71) */
+     .fx_ch = 4,               /* EXPECTED from the GRV6, which MEASURED 71/4 (its
+                                * Beat FX section is the FLX4's, note for note).
+                                * TODO: confirm on the FLX4's panel. */
      .n_fx = {
-          [LED_FX_BFX_ONOFF]   = -1,
+          [LED_FX_BFX_ONOFF]   = 71,
           [LED_FX_CFX_FILTER]  = -1,   /* absent: CFX knobs, no CFX buttons */
           [LED_FX_CFX_DUBECHO] = -1,   /* absent, ditto */
           [LED_FX_CFX_NOISE]   = -1,   /* absent, ditto */
@@ -1415,6 +1474,12 @@ static const struct led_notes flx4_leds = {
      .meter_master_ch = -1,
      .n_meter_master_l = -1,
      .n_meter_master_r = -1,
+
+     /* rbp's FX ON/OFF LED is lit while the effect is OFF and blinks while it is ON.
+      * The operator wants the button to show the ACTIVE effect, which is the GRV6
+      * table's reading (C-045): off -> 0, on -> 127. EXPECTED, not measured here:
+      * whether the FLX4, like the GRV6, blinks it by itself at 127. */
+     .fx_panel_blinks = 1,
 };
 
 const struct ctrl_map map_flx4 = {

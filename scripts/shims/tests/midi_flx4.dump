@@ -212,7 +212,8 @@
 0.092000 CONTROLLER ch=6 cc=24 val=0
 0.093000 CONTROLLER ch=6 cc=12 val=64
 0.094000 CONTROLLER ch=6 cc=13 val=0
-# Log-only mixer controls, and the two knobs the map deliberately leaves alone.
+# SMART CFX (0, the CFX type cycle) and SMART FADER (1, SOURCE); then the log-only
+# MONO/STEREO and the two knobs the map deliberately leaves alone.
 0.095000 NOTEON ch=6 note=0 vel=127
 0.096000 NOTEON ch=6 note=1 vel=127
 0.097000 NOTEON ch=6 note=109 vel=127

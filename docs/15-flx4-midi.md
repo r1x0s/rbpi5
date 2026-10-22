@@ -602,13 +602,14 @@ nothing about the layer is published-only any more. The
 | headphone MIX | CC 12 | `0x4405` K_HPMIX, global | also feeds `g_cue_mix` for the audio shim |
 | headphone LEVEL | CC 13 | `0x4406` K_HPLEVEL, global | also feeds `g_cue_gain` |
 | browse push | note 65 | `0x420c` K_SELECTOR, global | press / release |
-| SHIFT + browse push | note 66 | `0x0201` K_SOURCE, global | rbp's SOURCE screen, and the only row that reaches the mounted USB at all. **Measured off the panel 2026-09-30** — see below |
+| SHIFT + browse push | note 66 | `0x420d` K_BACK, global | BACK since 2026-10-22 (operator's ask); until then K_SOURCE, which moved to SMART FADER. The note number was **Measured off the panel 2026-09-30** — see below |
 | browse rotate | CC 64 (+SHIFT CC 100) | `0x420c` K_SELECTOR, global | relative, **0x01/0x7F** two's complement — *not* the jog's convention. Measured (S5.1): values 1 and 127 only, and the two conventions are what tell it apart from the platter, so this is the row that could most easily have been mapped backwards |
 | browse rotate on the **performance screen** | CC 64 / CC 100 | CC 64 → `0x0202` K_BROWSE (press+release), CC 100 → K_SELECTOR | since 2026-10-22 (operator's ask): rbp's own selector on that screen zooms the waveform or moves the grid, so the plain turn opens the browser and only the SHIFT turn keeps zoom/grid. Detents within 400 ms of the BROWSE are dropped while the screen changes. Off that screen both layers stay K_SELECTOR |
 | LOAD, deck 1 / 2 | notes 70 / 71 | `0x4311` K_LOAD, global key with rbp ch 1 / 2 | both note numbers measured off the panel — 70 on 2026-09-26, **71 on 2026-09-30**. Note 71 is also the FX ON/OFF note (`N_FX_ONOFF`, one leg per target channel), and the channel is what separates them: `ch=6` is LOAD deck 2, `ch=4` is the FX button |
 | SHIFT + LOAD, deck 1 / 2 | notes 104 / 122 | `0x420f` K_TRACKFILTER / `0x0210` K_SHORTCUT, global | rbp's track-filter panel and its shortcut view. **Both halves measured 2026-09-30** — the binding by injection, the note numbers by the operator's own presses, which the dump caught on the wire (`note=104` / `note=122`, both ch 6, both vel 127) *and* which brought both screens up; 104 needs a third edge a tap does not send ([below](#the-shift--load-bindings-and-the-edge-rbp-needs-that-a-tap-does-not-send)) |
 | MASTER CUE | note 99 | *(none — the mixer engine)* | toggles `me_set_master_cue()` from `me_get_master_cue()` |
-| SMART CFX / SMART FADER | notes 0 / 1 | *(none)* | log-only — rekordbox features |
+| SMART CFX | note 0 (+SHIFT 8) | CFX type buttons `0x50a6`/`0x50a1`/`0x50a2`/`0x50a3`/`0x50a4`/`0x50a5`, rbp ch 1 | since 2026-10-22: steps Filter → Space → Dub Echo → Sweep → Noise → Crush; SHIFT presses the current type again (CFX off). rbp's CFX type is one selection for the mixer and a second press of the same type turns it off |
+| SMART FADER | note 1 | `0x0201` K_SOURCE, global | since 2026-10-22 (was SHIFT + browse push, which is now BACK) |
 | MONO/STEREO | note 109 | *(none)* | log-only — it is the mono sum of both channels, not the L=cue/R=master split `rbp`'s stereo type means, so it is not `me_set_stereo()` |
 
 Two mixer controls are **deliberately not in the table at all**, and the reason

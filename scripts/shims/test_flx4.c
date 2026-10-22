@@ -458,11 +458,11 @@ static const struct expect expect[] = {
       * the send channel is CH_GLOBAL even though the events are on ch 6. */
      { 0, K_SELECTOR,       OP_PRESS,   1, 0,    0.0f, 0, 0 },
      { 0, K_SELECTOR,       OP_RELEASE, 1, 0,    0.0f, 0, 0 },
-     /* SHIFT + the same push is SOURCE instead -- a different keycode on the
+     /* SHIFT + the same push is BACK instead -- a different keycode on the
       * same note's shift variant, which is the whole reason the map binds the
       * shift note separately rather than tracking a SHIFT state. */
-     { 0, K_SOURCE,         OP_PRESS,   1, 0,    0.0f, 0, 0 },
-     { 0, K_SOURCE,         OP_RELEASE, 1, 0,    0.0f, 0, 0 },
+     { 0, K_BACK,           OP_PRESS,   1, 0,    0.0f, 0, 0 },
+     { 0, K_BACK,           OP_RELEASE, 1, 0,    0.0f, 0, 0 },
      { 0, K_SELECTOR,       OP_ROTATE,  1, 1,    0.0f, 0, 0 },
      { 0, K_SELECTOR,       OP_ROTATE,  1, -1,   0.0f, 0, 0 },
      /* 63 and 64: the encoder's direction split. This is the unit's only 63/64
@@ -492,8 +492,8 @@ static const struct expect expect[] = {
      { 0, K_TRACKFILTER,    OP_RELEASE, 1, 0,    0.0f, 0, 0 },
      { 0, K_SHORTCUT,       OP_PRESS,   1, 0,    0.0f, 0, 0 },
      { 0, K_SHORTCUT,       OP_RELEASE, 1, 0,    0.0f, 0, 0 },
-     /* MASTER CUE has no keycode either (asserted in check_state()). SMART CFX,
-      * SMART FADER and MONO/STEREO are log-only; MASTER LEVEL and MIC LEVEL are
+     /* MASTER CUE has no keycode either (asserted in check_state()). MONO/STEREO
+      * is log-only; MASTER LEVEL and MIC LEVEL are
       * deliberately unbound; and a deck control on ch 6 reaches nothing. */
      { 1, K_XFADER,         OP_VALUE,   1, 1023, 1.0f, 0, 0 },
      /* The CFX knobs are on the mixer channel but each drives one deck's channel:
@@ -503,6 +503,11 @@ static const struct expect expect[] = {
      /* The headphone knobs also land in g_cue_mix / g_cue_gain, asserted below. */
      { 1, K_HPMIX,          OP_VALUE,   1, 516,  516.0f / 1023.0f, 0, 0 },
      { 1, K_HPLEVEL,        OP_VALUE,   1, 0,    0.0f, 0, 0 },
+     /* SMART CFX steps the CFX type from Filter to Space (one press and release,
+      * rbp ch 1); SMART FADER is SOURCE (the fixture sends no NOTEOFF). */
+     { 0, K_SPACE,          OP_PRESS,   1, 0,    0.0f, 0, 0 },
+     { 0, K_SPACE,          OP_RELEASE, 1, 0,    0.0f, 0, 0 },
+     { 0, K_SOURCE,         OP_PRESS,   1, 0,    0.0f, 0, 0 },
 
      /* ---- Beat FX ---- */
      /* FX ON/OFF, once per target channel: the unit sends one leg per channel and
@@ -901,6 +906,20 @@ static void check_browse_split(void)
            sent_is(1, K_CUEMEMORY, OP_PRESS, 1, 0),
            "SHIFT + CUE/LOOP CALL < / > sent %d keycode(s), expected BACK then MEMORY",
            sent_n);
+
+     /* SMART CFX after the fixture's one press: the cursor is on Space. SHIFT +
+      * SMART CFX presses Space again (off); a second SHIFT press sends nothing (it
+      * is already off); the next SMART CFX brings Space back rather than stepping;
+      * and the one after that steps to Dub Echo. */
+     sent_n = 0;
+     send_note(6, 8, 127);
+     send_note(6, 8, 127);
+     send_note(6, 0, 127);
+     send_note(6, 0, 127);
+     CHECK(sent_n == 6 && sent_is(0, K_SPACE, OP_PRESS, 1, 0) &&
+           sent_is(1, K_SPACE, OP_RELEASE, 1, 0) &&
+           sent_is(2, K_SPACE, OP_PRESS, 1, 0) && sent_is(4, K_DUBECHO, OP_PRESS, 1, 0),
+           "the SMART CFX off/on/step sequence sent %d keycode(s)", sent_n);
 }
 
 static void check_mastervol(void)

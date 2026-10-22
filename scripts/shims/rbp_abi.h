@@ -390,8 +390,13 @@
 #define K_DUBECHO    0x50a2    /* Sound Color FX: Dub Echo button */
 #define K_SWEEP      0x50a3    /* Sound Color FX: Sweep button */
 #define K_NOISE      0x50a4    /* Sound Color FX: Noise button */
-#define K_SPACE      0x50a5    /* Sound Color FX: Space button */
-#define K_CRUSH      0x50a1    /* Sound Color FX: Crush button */
+/* Space and Crush were the other way round here until 2026-10-22. rbp's own
+ * ui::PcControlKeyData::keyCode2Text @0x385a6c names 20641 (0x50a1) "CfxSpace"
+ * and 20645 (0x50a5) "CfxCrush", and agrees with every other row in this block
+ * (0x50a2 DubEcho, 0x50a3 Sweep, 0x50a4 Noise, 0x50a6 Filter). Nothing bound
+ * either name before the FLX4's SMART CFX cycle, so nothing changed behaviour. */
+#define K_SPACE      0x50a1    /* Sound Color FX: Space button ("CfxSpace") */
+#define K_CRUSH      0x50a5    /* Sound Color FX: Crush button ("CfxCrush") */
 #define K_BFXTYPE    0x448b    /* Beat FX Type Select (0=Delay, 1=Echo, etc.) */
 #define K_BFXCH      0x448c    /* Beat FX Channel Assign (5 = MASTER) */
 #define BFX_CH_MASTER 5
