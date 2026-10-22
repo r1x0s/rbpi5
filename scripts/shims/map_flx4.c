@@ -124,6 +124,8 @@
  */
 #define _GNU_SOURCE
 #include <stdint.h>         /* uint32_t, for the two mixer-route words */
+#include <fcntl.h>          /* the launcher's return request */
+#include <unistd.h>
 #include <sound/asequencer.h>
 
 #include "shimutil.h"
@@ -218,6 +220,7 @@
 #define N_SMART_CFX   0   /* SMART CFX          (+SHIFT 8)  -> CFX type cycle, see flx4_cfx_button() */
 #define N_SMART_CFX_SHIFT 8
 #define N_SMART_FADER 1   /* SMART FADER        (+SHIFT 9)  -> SOURCE (rekordbox's feature has no rbp equivalent) */
+#define N_SMART_FADER_SHIFT 9   /* held RETURN_HOLD_MS -> back to the boot menu, see flx4_return_tick() */
 #define N_MONO_STEREO 109 /* Android MONO/STEREO            -- no rbp equivalent */
 
 /* ---- Beat FX (list ch 5, with a second leg on ch 6) --------------------- */
@@ -425,8 +428,46 @@ static void flx4_cfx_button(int shift)
           cfx_cycle[cfx_pos], cfx_off ? " off" : "");
 }
 
+/* SHIFT + SMART FADER, HELD, -> back to the boot menu (rblaunch, the Pi's
+ * system chooser; launcher/ in the standalonedj project). The launcher's
+ * rblaunch-return.path watches RETURN_REQUEST on the host, and the chroot's /tmp
+ * IS the host's (fix-dev.sh), so writing the file is the whole request: systemd
+ * then starts the menu, which stops this player through Conflicts=. Held for
+ * RETURN_HOLD_MS so a brush of the button in the middle of a set cannot end it;
+ * a release before that cancels. Sent once per hold. */
+static int return_hold_ms = 2000;
+static const char *return_request = "/tmp/rblaunch.request";
+static unsigned long long return_down_ms;     /* 0 = not held */
+static int return_sent;
+
+static void flx4_return_tick(void)
+{
+     if (!return_down_ms || return_sent)
+          return;
+     if (shim_now_ms() - return_down_ms < (unsigned long long)return_hold_ms)
+          return;
+     return_sent = 1;
+     int fd = open(return_request, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+     if (fd >= 0) {
+          (void)!write(fd, "flx4\n", 5);
+          close(fd);
+     }
+     klog("knobshim2: SHIFT + SMART FADER held -> back to the boot menu (%s: %s)\n",
+          return_request, fd >= 0 ? "written" : "could not write");
+}
+
 static void flx4_note(int ch, int note, int on)
 {
+     if (ch == CH_MIX && note == N_SMART_FADER_SHIFT) {
+          if (on) {
+               return_down_ms = shim_now_ms();
+               return_sent = 0;
+          } else {
+               return_down_ms = 0;
+          }
+          return;
+     }
+
      /* SHIFT + browse push: OUT of the browser, back to the performance screen --
       * rbp's BROWSE key, which closes the screen it opens (the RX3's own BROWSE
       * button toggles). On the performance screen it does nothing: a BROWSE there
@@ -1035,6 +1076,8 @@ static void flx4_build(void)
      if (jog_ppr < 1) jog_ppr = 1;
      jog_rev = env_on("JOG_REV", 0);
      jog_idle_ms = env_num("JOG_IDLE_MS", 120);
+     return_hold_ms = env_num("RETURN_HOLD_MS", 2000);
+     return_request = env_text("RETURN_REQUEST", "/tmp/rblaunch.request");
      if (jog_idle_ms < 10) jog_idle_ms = 10;
      /* Where the HDMI mirror reaches unity in the MASTER LEVEL knob's travel --
      * env_dnum because it is a fraction, not a count (shimutil.h's reason for
@@ -1227,6 +1270,7 @@ static void flx4_build(void)
       * me_set_stereo()). */
      add_note(CH_MIX, N_SMART_CFX, 0, CH_GLOBAL);
      add_note(CH_MIX, N_SMART_FADER, K_SOURCE, CH_GLOBAL);
+     /* SHIFT + SMART FADER is handled ahead of the table (flx4_return_tick()). */
      add_note(CH_MIX, N_MONO_STEREO, 0, CH_GLOBAL);
      /* And the control this map deliberately does not route to rbp: MASTER LEVEL
       * (CC 8 + CC 40) is the unit's own output volume, which sits after the USB
@@ -1311,6 +1355,7 @@ static void flx4_tick(void)
 {
      flx4_jog_idle();
      flx4_search_idle();
+     flx4_return_tick();
 }
 
 static void flx4_event(const struct snd_seq_event *ev)

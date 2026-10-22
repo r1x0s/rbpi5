@@ -612,6 +612,7 @@ nothing about the layer is published-only any more. The
 | SMART CFX | note 0 (+SHIFT 8) | CFX type buttons `0x50a6`/`0x50a1`/`0x50a2`/`0x50a3`/`0x50a4`/`0x50a5`, rbp ch 1 | since 2026-10-22: SMART CFX toggles CFX (presses the current type); SHIFT steps Filter → Space → Dub Echo → Sweep → Noise → Crush (and switches it on). rbp's CFX type is one selection for the mixer and a second press of the same type turns it off |
 | SMART CFX LED | note 0, ch 6 (out) | lit while any of rbp's six CFX types is ON | **measured 2026-10-22**: rbp's CFX LedStat ids are 41 Filter, 42 Sweep, 43 Dub Echo, 44 Noise, 45 Crush, 46 Space (LedDef + 8, read from rbp's LedDef name table at 0x4de06c); each reads 1 while selectable and 2 while on. The operator confirmed the LED follows SMART CFX on the panel |
 | SMART FADER | note 1 | `0x0201` K_SOURCE, global | since 2026-10-22 (was SHIFT + browse push, which is now BACK) |
+| SHIFT + SMART FADER, **held 2 s** | note 9 | writes `/tmp/rblaunch.request` (`RETURN_REQUEST`, hold `RETURN_HOLD_MS`) | since 2026-10-22: back to the Pi's boot menu (rblaunch, outside this repo); its `rblaunch-return.path` starts the menu, which stops rblive4 through `Conflicts=`. The chroot's /tmp is the host's. A release before 2 s does nothing |
 | MONO/STEREO | note 109 | *(none)* | log-only — it is the mono sum of both channels, not the L=cue/R=master split `rbp`'s stereo type means, so it is not `me_set_stereo()` |
 
 Two mixer controls are **deliberately not in the table at all**, and the reason

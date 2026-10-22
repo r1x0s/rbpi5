@@ -933,6 +933,36 @@ static void check_browse_split(void)
      browse_mode = 3;
 }
 
+/* SHIFT + SMART FADER held -> the launcher's request file (map_flx4.c,
+ * flx4_return_tick()). A release before the hold writes nothing; a full hold
+ * writes it once; neither sends rbp a keycode. */
+static char return_path[96];
+
+static void check_return(void)
+{
+     int base = sent_n;
+
+     unlink(return_path);
+     send_note(6, 9, 127);
+     map_flx4.tick();
+     send_note(6, 9, 0);                  /* the NOTEON parser path: vel 0 */
+     usleep(100000);
+     map_flx4.tick();
+     CHECK(access(return_path, F_OK) != 0, "a short SHIFT + SMART FADER wrote the request");
+
+     send_note(6, 9, 127);
+     usleep(100000);
+     map_flx4.tick();
+     CHECK(access(return_path, F_OK) == 0, "a held SHIFT + SMART FADER did not write %s",
+           return_path);
+     unlink(return_path);
+     usleep(100000);
+     map_flx4.tick();
+     CHECK(access(return_path, F_OK) != 0, "the request was written twice in one hold");
+     send_note(6, 9, 0);
+     CHECK(sent_n == base, "the return combo sent %d keycode(s)", sent_n - base);
+}
+
 static void check_mastervol(void)
 {
      int base = sent_n;
@@ -1441,6 +1471,11 @@ int main(void)
 
      for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
           unsetenv(names[i]);
+     /* The return-to-menu hold, shortened, and its request file somewhere this
+      * process may write (check_return()). */
+     snprintf(return_path, sizeof return_path, "/tmp/test_flx4_return.%d", (int)getpid());
+     setenv("RETURN_HOLD_MS", "60", 1);
+     setenv("RETURN_REQUEST", return_path, 1);
 
      round_trip();
      parser_tolerance();
@@ -1482,6 +1517,7 @@ int main(void)
      check_idle();
      check_leds();
      check_browse_split();
+     check_return();
 
      /* And once more with pacing on, which is the path MIDI_REPLAY_SPEED takes.
       * At this speed every sleep is zero-length, so only the count is asserted:
