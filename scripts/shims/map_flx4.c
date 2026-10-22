@@ -1493,6 +1493,13 @@ static const struct led_notes flx4_leds = {
       * table's reading (C-045): off -> 0, on -> 127. EXPECTED, not measured here:
       * whether the FLX4, like the GRV6, blinks it by itself at 127. */
      .fx_panel_blinks = 1,
+
+     /* SMART CFX is this map's CFX on/off (flx4_cfx_button()), so its LED shows
+      * whether rbp has a Sound Color FX on. Note 0 on ch 6 is the button's own
+      * input note, the rule every measured LED on this panel follows. EXPECTED,
+      * to be confirmed on the panel. */
+     .cfx_any_ch1 = 6 + 1,
+     .n_cfx_any = 0,
 };
 
 const struct ctrl_map map_flx4 = {

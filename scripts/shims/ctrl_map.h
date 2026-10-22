@@ -257,6 +257,17 @@ struct led_notes {
       * every surface but the GRV6) = this bridge renders the blink. At the end
       * of the struct so a table that never names it reads 0. */
      int fx_panel_blinks;
+
+     /* ONE LED FOR "SOUND COLOR FX IS ON", whichever of rbp's six types it is --
+      * for a surface that has a single CFX on/off button rather than the RX3's
+      * six type buttons (the FLX4's SMART CFX, map_flx4.c). Lit while any of the
+      * six CFX LedStat entries reads ON (state 2; rbp_led.c, led_cfx_ids).
+      *
+      * The channel is stored PLUS ONE so that a table that never names it reads
+      * 0 = no such LED, like fx_panel_blinks above: a plain channel field would
+      * default to channel 0 / note 0, which is a real LED on most surfaces. */
+     int cfx_any_ch1;      /* send channel + 1; 0 = none */
+     int n_cfx_any;        /* its note */
 };
 
 /* Empty both tables. Called by the front end exactly once, before any build():

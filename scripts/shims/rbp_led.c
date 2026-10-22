@@ -113,6 +113,15 @@ static int led_force;                     /* this tick re-sends regardless */
 #define LED_STRIP_MAX 2
 static signed char led_pfl_last[LED_STRIP_MAX] = { -1, -1 };  /* strip CUE LED */
 static signed char led_mc_last = -1;              /* master CUE LED */
+static signed char led_cfx_any_last = -1;         /* "CFX is on" LED */
+
+/* The six Sound Color FX LedStat ids, LedDef::ID + 8 like the group below. READ
+ * 2026-10-22 out of rbp's LedDef name table at 0x4de06c (one pointer per id):
+ * 33 CfxFilter, 34 CfxSweep, 35 CfxDubEcho, 36 CfxNoise, 37 CfxCrush, 38 CfxSpace,
+ * 40 EffectOnOff -- the four this file already drove and EffectOnOff agree with
+ * it, which is what makes the two new ones (Crush 45, Space 46) trustworthy. */
+static const unsigned int led_cfx_ids[6] = { 41, 42, 43, 44, 45, 46 };
+static signed char led_cfx_st_last[6] = { -2, -2, -2, -2, -2, -2 };
 
 /* The surface's LED table. ctrl_sel_leds() reads the front end's selection, which
  * cannot change after start-up, so one lookup is enough -- but it is resolved
@@ -658,6 +667,24 @@ static void led_refresh(void)
           int on = led_fx_on(st, st == 2 ? led_blink_for(led_g_tab[g].id, 0) : 0,
                              n->fx_panel_blinks);
           led_apply_g(g, n->fx_ch, n->n_fx[g], on);
+     }
+
+     /* "Sound Color FX is on": any of the six types active. */
+     if (n->cfx_any_ch1 > 0 && n->n_cfx_any >= 0) {
+          int any = 0;
+          for (int k = 0; k < 6; k++) {
+               /* MEASURED 2026-10-22 (SMART CFX injected on the Pi 5 unit): every
+                * type reads 1 while it is merely selectable and 2 while it is ON --
+                * Filter 2 -> 1 -> 2 across an off/on, and stepping to Space put 41
+                * at 1 and 46 at 2. Only 2 lights the LED, and solidly. */
+               int st = ledstat_state(led_cfx_ids[k], 0);
+               if (st == 2)
+                    any = 1;
+               if (led_verbose && st != led_cfx_st_last[k])
+                    klog("knobshim2: cfx LedStat %u state %d\n", led_cfx_ids[k], st);
+               led_cfx_st_last[k] = (signed char)st;
+          }
+          led_send_run(n->cfx_any_ch1 - 1, 1, n->n_cfx_any, &led_cfx_any_last, any);
      }
 
      /* the mixer strips' CUE LEDs, from rbp's own cue state. The channel base and
