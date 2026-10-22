@@ -411,14 +411,16 @@ static const struct expect expect[] = {
      /* ---- deck 1 jog: relative and 0x40-centred ----
       * The first message of all is spent establishing the dt baseline (its own
       * +1 is not applied), so the first row below is the second message, which
-      * carries +3 counts (val 0x43 - 0x40). Then 0 counts (nothing goes out), +1,
-      * -2 on the outer ring, -1 on the platter's vinyl-off CC, and +2 -- which
-      * leaves the virtual position at 3, the value the idle edge later repeats. */
+      * carries +3 counts (val 0x43 - 0x40). Then the SHIFT platter (CC 41): 0
+      * counts (nothing goes out) and +1, which is SEARCH > held rather than a jog
+      * count (released by check_idle()'s tick). Then -2 on the outer ring, -1 on
+      * the platter's vinyl-off CC, and +2 -- which leaves the virtual position at
+      * 2, the value the idle edge later repeats. */
      { 2, K_JOG_ROT,        OP_ROTATE,  1, 0,    1.0f, 3, 1 },
-     { 2, K_JOG_ROT,        OP_ROTATE,  1, 0,    1.0f, 4, 1 },
-     { 2, K_JOG_ROT,        OP_ROTATE,  1, 0,   -1.0f, 2, 1 },
+     { 0, K_SRFWD,          OP_PRESS,   1, 0,    0.0f, 0, 0 },
      { 2, K_JOG_ROT,        OP_ROTATE,  1, 0,   -1.0f, 1, 1 },
-     { 2, K_JOG_ROT,        OP_ROTATE,  1, 0,    1.0f, 3, 1 },
+     { 2, K_JOG_ROT,        OP_ROTATE,  1, 0,   -1.0f, 0, 1 },
+     { 2, K_JOG_ROT,        OP_ROTATE,  1, 0,    1.0f, 2, 1 },
 
      /* ---- deck 1 pitch: the 14-bit pair, dispatched on the LSB ----
       * +end (0x7F/0x7F), centre (0x40/0x00), -end (0x00/0x00). v10 is rbp's
@@ -1085,19 +1087,22 @@ static void check_idle(void)
      usleep(200000);              /* longer than the default JOG_IDLE_MS = 120 */
      map_flx4.tick();
 
-     CHECK(sent_n == base + 2,
-           "the jog's idle edge sent %d keycodes, expected one per deck",
-           sent_n - base);
-     if (sent_n != base + 2)
+     CHECK(sent_n == base + 3,
+           "the idle tick sent %d keycodes, expected one jog edge per deck and "
+           "the SHIFT platter's SEARCH release", sent_n - base);
+     if (sent_n != base + 3)
           return;
+     CHECK(sent[base + 2].key == K_SRFWD && sent[base + 2].op == OP_RELEASE &&
+           sent[base + 2].ch == 1,
+           "the idle tick did not release deck 1's SEARCH >");
 
-     /* Deck 1's last delta left its virtual position at 3, deck 2's at 4; both
+     /* Deck 1's last delta left its virtual position at 2, deck 2's at 4; both
       * must be repeated with a speed of exactly 0 -- rbp keeps bending until it
       * is told the wheel stopped. */
      for (int i = 0; i < 2; i++) {
           const struct sent *s = &sent[base + i];
           int want_ch = 1 + i;
-          long want_lval = 3 + i;
+          long want_lval = i ? 4 : 2;
 
           CHECK(s->kind == 2 && s->key == K_JOG_ROT && s->op == OP_ROTATE &&
                 s->ch == want_ch && s->param == 0 && s->fval == 0.0f &&

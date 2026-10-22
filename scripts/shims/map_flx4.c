@@ -801,6 +801,54 @@ static void flx4_jog(int ch, int val)
 /* The jog's end-of-motion edge: rbp keeps bending until it is told the wheel
  * stopped, so a speed-0 message goes out once the wheel has been still for
  * JOG_IDLE_MS. Runs from tick(). */
+/* SHIFT + platter (CC 41) -> SEARCH: rbp's SEARCH < / > held in the direction the
+ * platter turns, and let go once it stops (operator's ask, 2026-10-22: a fast way
+ * through the track). rbp's SEARCH keys are HELD keys -- the RX3's search buttons
+ * scan while pressed -- so the platter is a hold, not a per-count step: the first
+ * count in a direction presses, a count the other way swaps the press, and
+ * SEARCH_IDLE_MS without a count releases (from tick()). */
+#define SEARCH_IDLE_MS 150
+static struct {
+     int dir;                       /* -1, 0 (nothing held) or +1 */
+     unsigned long long last_ms;
+} search_state[2];
+
+static void search_release(int idx)
+{
+     if (search_state[idx].dir == 0)
+          return;
+     send_rx_key(search_state[idx].dir > 0 ? K_SRFWD : K_SRREV, OP_RELEASE, 1 + idx, 0);
+     search_state[idx].dir = 0;
+}
+
+static void flx4_jog_search(int ch, int val)
+{
+     int idx = (ch == CH_DECK2) ? 1 : 0;
+     int d = val - 0x40;
+     if (d == 0)
+          return;
+     if (jog_rev)
+          d = -d;
+     int dir = d > 0 ? 1 : -1;
+     search_state[idx].last_ms = shim_now_ms();
+     if (search_state[idx].dir == dir)
+          return;
+     search_release(idx);
+     send_rx_key(dir > 0 ? K_SRFWD : K_SRREV, OP_PRESS, 1 + idx, 0);
+     search_state[idx].dir = dir;
+     if (jog_verbose)
+          klog("knobshim2: SHIFT+jog ch%d -> SEARCH %s\n", ch, dir > 0 ? ">" : "<");
+}
+
+static void flx4_search_idle(void)
+{
+     unsigned long long t = shim_now_ms();
+     for (int i = 0; i < 2; i++)
+          if (search_state[i].dir != 0 &&
+              t - search_state[i].last_ms >= SEARCH_IDLE_MS)
+               search_release(i);
+}
+
 static void flx4_jog_idle(void)
 {
      unsigned long long t = shim_now_ms();
@@ -1262,6 +1310,7 @@ static void flx4_startup(void)
 static void flx4_tick(void)
 {
      flx4_jog_idle();
+     flx4_search_idle();
 }
 
 static void flx4_event(const struct snd_seq_event *ev)
@@ -1276,8 +1325,10 @@ static void flx4_event(const struct snd_seq_event *ev)
                flx4_pitch(ch, cc, val);
           else if ((ch == CH_DECK1 || ch == CH_DECK2) &&
                    (cc == CC_JOG_WHEEL || cc == CC_JOG_VINYL ||
-                    cc == CC_JOG_NOVINYL || cc == CC_JOG_SHIFT))
+                    cc == CC_JOG_NOVINYL))
                flx4_jog(ch, val);
+          else if ((ch == CH_DECK1 || ch == CH_DECK2) && cc == CC_JOG_SHIFT)
+               flx4_jog_search(ch, val);
           else if (ch == CH_MIX && (cc == CC_BROWSE || cc == CC_BROWSE_SHIFT))
                flx4_browse(cc, val);
           else if (ch == CH_MIX && (cc == CC_MASTER_MSB || cc == CC_MASTER_LSB))

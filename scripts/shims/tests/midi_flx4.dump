@@ -133,6 +133,7 @@
 0.046000 CONTROLLER ch=0 cc=36 val=0
 
 # ---- deck 1 jog: relative and 0x40-centred, both directions, all four CCs ----
+# (CC 41, the platter with SHIFT held, is SEARCH since 2026-10-22, not a jog count.)
 0.047000 CONTROLLER ch=0 cc=34 val=65
 0.048000 CONTROLLER ch=0 cc=34 val=67
 0.049000 CONTROLLER ch=0 cc=41 val=64
