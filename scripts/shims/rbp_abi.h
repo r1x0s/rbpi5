@@ -321,6 +321,19 @@
 #define USB_MGR_MEDIA_READY  2       /* media present and ready */
 
 #define K_BACK       0x420d    /* RX3 BACK key */
+
+/* CUE/LOOP CALL < and >, and MEMORY -- read 2026-10-22 out of
+ * ui::PcControlKeyData::keyCode2Text @0x385a6c, a switch over the keycode whose
+ * neighbours are the names this file already carries (0x4311 "Load", 0x420d "Back",
+ * 0x420c "RotarySelector"), and agreeing with ui::KeyInput::keyCodeAsText @0x37cde4,
+ * which references the same two strings ("CallNext" @0x4e031c, "CallPrev" @0x4e0328).
+ * On the RX3 the call buttons call the stored cue/loop points and, during loop
+ * playback, halve (<) and double (>) the loop. Deck keys, like K_LOAD's family:
+ * the deck is the send channel. TODO: unverified on the glass beyond the press
+ * reaching rbp -- the loop-length behaviour is the RX3 manual's, not a measurement. */
+#define K_CALLNEXT   0x4322    /* "CallNext"  CUE/LOOP CALL >  (loop 2X)   */
+#define K_CALLPREV   0x4323    /* "CallPrev"  CUE/LOOP CALL <  (loop 1/2X) */
+#define K_CUEMEMORY  0x4225    /* "CueMemory" MEMORY */
 #define K_LOAD       0x4311
 #define K_PLAY       0x4101
 #define K_CUE        0x4102

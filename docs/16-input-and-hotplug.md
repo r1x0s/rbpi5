@@ -698,7 +698,7 @@ here:
 
 **Nothing here was fixed by the `kbd` map in the end.** The gap it was working
 around — no SOURCE binding — is closed on `flx4` now, by two bindings of its own:
-SHIFT + browse push is `K_SOURCE`, and CUE/LOOP CALL ◁ is `K_BACK`
+SHIFT + browse push is `K_SOURCE`, and SHIFT + CUE/LOOP CALL ◁ is `K_BACK` (the plain ◁/▷ are rbp's CallPrev/CallNext since 2026-10-22)
 ([15](15-flx4-midi.md)). `kbd` has since found its own reason to exist — it is the
 only map that reads a keyboard and a mouse — but that is what `EVDEV_MAP=kbd` now
 says, on its own variable, without displacing the controller.

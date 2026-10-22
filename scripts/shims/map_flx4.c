@@ -72,8 +72,8 @@
  *   - the unit's extra pad modes: rbp has four and this section has more, so
  *     KEYBOARD, PAD FX 2, BEAT LOOP and KEY SHIFT reach nothing at all (see the
  *     pad block in flx4_build());
- *   - CUE/LOOP CALL: rbp's keycode for those buttons is not identified. They are
- *     in the table as log-only, and in docs/15's open questions.
+ *   - (CUE/LOOP CALL used to be here: its keycodes, CallPrev/CallNext, were read
+ *     out of rbp 2026-10-22 -- rbp_abi.h -- and the buttons are now bound.)
  *
  * Everything about rbp lives in rbp_abi.h/rbp_bridge.h; the only place this file
  * touches a raw address is flx4_startup()'s two mixer-route words, which are
@@ -160,6 +160,8 @@
 #define N_4BEAT      77   /* 4 BEAT / EXIT      (+SHIFT 80) */
 #define N_CALL_PREV  81   /* CUE/LOOP CALL <    (+SHIFT 62) */
 #define N_CALL_NEXT  83   /* CUE/LOOP CALL >    (+SHIFT 61) */
+#define N_CALL_PREV_SHIFT 62
+#define N_CALL_NEXT_SHIFT 61
 #define N_SYNC       88   /* BEAT SYNC, sent on RELEASE (footnote *3) */
 #define N_SYNC_LONG  92   /* BEAT SYNC long press */
 #define N_CH_CUE     84   /* channel CUE        (+SHIFT 104) */
@@ -648,14 +650,42 @@ static void flx4_cc_abs(int ch, int cc, int val)
 /* BROWSE (list ch 7 CC 64, +SHIFT CC 100): a relative encoder of the OTHER
  * convention -- the list says "Turn clockwise: Increases from 0x01, turn
  * counterclockwise: Decreases from 0x7F", so it is the two's-complement delta
- * map_jp21.c's browse knob also uses, not the jog's 0x40-centred one. */
-static void flx4_browse(int val)
+ * map_jp21.c's browse knob also uses, not the jog's 0x40-centred one.
+ *
+ * ON THE PERFORMANCE SCREEN the two layers split (operator's ask, 2026-10-22).
+ * rbp's own selector there zooms the waveform or moves the beat grid (rbp_abi.h,
+ * RB_WAVE_ZOOM_OK), which on a controller whose encoder is labelled BROWSE reads
+ * as the knob doing the wrong thing. So there:
+ *   - the plain turn opens the browser (rbp's BROWSE key) and every detent after
+ *     it scrolls the list as usual;
+ *   - the SHIFT turn (CC 100) is the RX3's own selector, i.e. zoom / grid.
+ * Everywhere else both layers are the selector, as before.
+ *
+ * The screen changes a frame or more after BROWSE is sent, so detents arriving
+ * in that window would still read PLAY: they are dropped rather than sent as a
+ * second BROWSE (which could close the screen it just opened) or as a selector
+ * step (which would zoom). */
+#define BROWSE_OPEN_SETTLE_MS 400
+static unsigned long long browse_open_ms;
+
+static void flx4_browse(int cc, int val)
 {
      if (val < 0 || val > 127)
           return;
      int delta = (val >= 64) ? (val - 128) : val;
      if (delta == 0)
           return;
+     if (cc == CC_BROWSE && rbp_browse_mode() == BROWSE_MODE_PLAY) {
+          unsigned long long t = shim_now_ms();
+          if (browse_open_ms != 0 && t - browse_open_ms < BROWSE_OPEN_SETTLE_MS)
+               return;
+          browse_open_ms = t;
+          send_rx_key(K_BROWSE, OP_PRESS, CH_GLOBAL, 0);
+          send_rx_key(K_BROWSE, OP_RELEASE, CH_GLOBAL, 0);
+          if (verbose)
+               klog("knobshim2: browse knob on the performance screen -> BROWSE\n");
+          return;
+     }
      int key = K_SELECTOR;
      long n = (long)delta * (long)knob_scale;
      send_rx_key(key, OP_ROTATE, CH_GLOBAL, n < 0 ? -1 : 1);
@@ -953,19 +983,22 @@ static void flx4_build(void)
           add_note(rch, N_MODE_PFX1, K_ALOOP, sch);
           add_note(rch, N_MODE_JUMP, K_SLIPLOOP, sch);
           add_note(rch, N_MODE_SMPL, K_BEATJUMP, sch);
-          /* Known, deliberately not routed (key 0): the SHIFT button and
-           * CUE/LOOP CALL > -- rbp's keycode for the call buttons is not
-           * identified. See docs/15's open questions. */
+          /* Known, deliberately not routed (key 0): the SHIFT button. */
           add_note(rch, N_SHIFT, 0, sch);
-          /* ...with one exception. CALL < is BACK, and it is the only spare
-           * button on this unit: the FLX4 has no BACK and no SOURCE button at
-           * all, and without a BACK the browse screen is a one-way door --
-           * every keycode that leaves it is one this surface does not have.
-           * Nothing is taken from the button by this: the call buttons' real
-           * rbp keycodes are unidentified, so it was dead. "<" reads as "back
-           * one level", which is what it now does. */
-          add_note(rch, N_CALL_PREV, K_BACK, CH_GLOBAL);
-          add_note(rch, N_CALL_NEXT, 0, sch);
+          /* CUE/LOOP CALL < and >: rbp's own CallPrev/CallNext (rbp_abi.h), so
+           * the buttons do what the RX3's do -- call the stored cue/loop points,
+           * and during loop playback halve and double the loop, which is what the
+           * FLX4's own panel prints for them in rekordbox. */
+          add_note(rch, N_CALL_PREV, K_CALLPREV, sch);
+          add_note(rch, N_CALL_NEXT, K_CALLNEXT, sch);
+          /* SHIFT + CALL < is BACK. Until 2026-10-22 the plain CALL < was, because
+           * the call keycodes were unknown and the FLX4 has no BACK and no SOURCE
+           * button at all -- and without a BACK the browse screen is a one-way
+           * door. The operator wanted the call buttons for loop length, so BACK
+           * moved to their shift layer. SHIFT + CALL > is MEMORY, the RX3's
+           * store-a-cue key. */
+          add_note(rch, N_CALL_PREV_SHIFT, K_BACK, CH_GLOBAL);
+          add_note(rch, N_CALL_NEXT_SHIFT, K_CUEMEMORY, sch);
 
           /* The deck's own mixer strip: same four knobs and one fader rbp's
            * channel has, on the deck's channel rather than a separate one. */
@@ -1176,7 +1209,7 @@ static void flx4_event(const struct snd_seq_event *ev)
                     cc == CC_JOG_NOVINYL || cc == CC_JOG_SHIFT))
                flx4_jog(ch, val);
           else if (ch == CH_MIX && (cc == CC_BROWSE || cc == CC_BROWSE_SHIFT))
-               flx4_browse(val);
+               flx4_browse(cc, val);
           else if (ch == CH_MIX && (cc == CC_MASTER_MSB || cc == CC_MASTER_LSB))
                flx4_mastervol(cc, val);
           else

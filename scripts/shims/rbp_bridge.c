@@ -70,6 +70,13 @@ int rbp_beatfx_type(void)
      return ((int (*)(void *))ADDR_GET_BFX_TYPE)(NULL);
 }
 
+int rbp_browse_mode(void)
+{
+     if (!is_rbp_process())
+          return -1;
+     return *(volatile int *)(uintptr_t)(UIBROWSE_GLOBAL + UIBROWSE_OFF_MODE);
+}
+
 void *mixer_engine(void)
 {
      return *(void **)ME_SINGLETON;

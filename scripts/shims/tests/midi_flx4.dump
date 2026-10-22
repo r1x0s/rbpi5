@@ -105,11 +105,11 @@
 0.031000 NOTEON ch=0 note=92 vel=127
 # Log-only controls: known to the table, no rbp keycode behind them.
 0.032000 NOTEON ch=0 note=63 vel=127
-# 81 is NOT one of them any more: it is BACK, bound below like any other button.
-# 32 and 34 are not either -- they are the two positional pad modes further up,
-# with both edges. 81's lonely NOTEON is deliberate -- the press is the whole
-# assertion there, and the two call buttons appear together so that 83 going quiet
-# while 81 speaks is one row of difference rather than two files.
+# 81 and 83 are NOT among them any more: they are CUE/LOOP CALL < and >, rbp's
+# CallPrev/CallNext (2026-10-22). 32 and 34 are not either -- they are the two
+# positional pad modes further up, with both edges. The call buttons' lonely
+# NOTEONs are deliberate -- the press is the whole assertion there, and the two
+# appear together so that a binding on the wrong button is a swapped pair of rows.
 0.033000 NOTEON ch=0 note=81 vel=127
 0.034000 NOTEON ch=0 note=83 vel=127
 # And one the table does not have at all: PLAY while SHIFT is held (note 14).

@@ -39,6 +39,12 @@ int cc_to_10bit(int v);
  * event handler only runs once rbp's KeyManager exists. */
 int rbp_beatfx_type(void);
 
+/* The screen rbp is on: uiBrowse's mode word (rbp_abi.h, UIBROWSE_OFF_MODE), so
+ * BROWSE_MODE_PLAY (1) is the performance screen. -1 when the shim is not running
+ * inside rbp. Through the bridge for rbp_beatfx_type()'s reason: a map that wants
+ * the screen stays free of rbp addresses, and a host test can stub it. */
+int rbp_browse_mode(void);
+
 /* djengine::MixerEngine. Everything here tolerates the engine not existing yet
  * and returns a neutral value (-1 from the getters, a no-op from the setters),
  * because the shim starts before rbp has built it. */

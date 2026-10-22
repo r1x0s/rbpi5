@@ -249,6 +249,11 @@ int rbp_beatfx_type(void)
      return 7;
 }
 
+/* The screen rbp is on. NOT the performance screen (1) for the fixture replay, so
+ * the browse rows below stay the selector's; check_browse_split() moves it. */
+static int browse_mode = 3;
+int rbp_browse_mode(void)            { return browse_mode; }
+
 /* The map only asks for the engine pointer while logging (verbose is 0 here), and
  * the mixer calls below are stubbed outright, so NULL is never dereferenced. */
 void *mixer_engine(void)             { return NULL; }
@@ -373,14 +378,13 @@ static const struct expect expect[] = {
      /* BEAT SYNC long press -> MASTER, as a pulse. */
      { 0, K_MASTER,         OP_PRESS,   1, 0,    0.0f, 0, 0 },
      { 0, K_MASTER,         OP_RELEASE, 1, 0,    0.0f, 0, 0 },
-     /* CUE/LOOP CALL < is BACK -- the surface has no BACK button, and this is
-      * the spare one it was given instead. Its neighbour (83) stays log-only,
-      * which is the pair of rows below: one of the two call buttons speaks and
-      * the other does not, so a binding that fell on the wrong one is caught.
-      * The fixture sends no NOTEOFF for it, hence the press alone. */
-     { 0, K_BACK,           OP_PRESS,   1, 0,    0.0f, 0, 0 },
-     /* SHIFT, CUE/LOOP CALL > and a +SHIFT note all reach no keycode: they are in
-      * the table with key 0. */
+     /* CUE/LOOP CALL < and > are rbp's CallPrev and CallNext, on the deck's
+      * channel, in that order -- so a binding that fell on the wrong button is
+      * caught. The fixture sends no NOTEOFF for them, hence the presses alone.
+      * (Their SHIFT layer, BACK and MEMORY, is check_browse_split()'s.) */
+     { 0, K_CALLPREV,       OP_PRESS,   1, 0,    0.0f, 0, 0 },
+     { 0, K_CALLNEXT,       OP_PRESS,   1, 0,    0.0f, 0, 0 },
+     /* SHIFT and a +SHIFT note reach no keycode: they are in the table with key 0. */
      /* CH CUE produces no keycode at all -- the engine call is asserted in
       * check_state() -- and neither does the +SHIFT pad layer, nor a pad in a
       * mode rbp has no equivalent for. The fixture's base-64 pad is that last
@@ -835,6 +839,68 @@ static void send_cc(int ch, int num, int val)
               ch, num, val);
      CHECK(mididump_parse(line, &ev) == 1, "could not build \"%s\"", line);
      dispatch(&ev);
+}
+
+static void send_note(int ch, int note, int vel)
+{
+     char line[64];
+     struct snd_seq_event ev;
+
+     snprintf(line, sizeof line, "0.000000 NOTEON ch=%d note=%d vel=%d\n",
+              ch, note, vel);
+     CHECK(mididump_parse(line, &ev) == 1, "could not build \"%s\"", line);
+     dispatch(&ev);
+}
+
+static int sent_is(int i, int key, int op, int ch, long param)
+{
+     return i < sent_n && sent[i].key == key && sent[i].op == op &&
+            sent[i].ch == ch && sent[i].param == param;
+}
+
+/* The browse encoder on the PERFORMANCE screen, and the call buttons' SHIFT layer
+ * (map_flx4.c, flx4_browse() and the CALL block in flx4_build()). Driven after the
+ * fixture with the screen stub moved, because the fixture's own browse rows are
+ * the off-screen behaviour and must stay exactly what they were. */
+static void check_browse_split(void)
+{
+     sent_n = 0;
+     browse_mode = BROWSE_MODE_PLAY;
+
+     /* The plain turn opens the browser: BROWSE, a press and a release, global. */
+     send_cc(6, 64, 1);
+     CHECK(sent_n == 2 && sent_is(0, K_BROWSE, OP_PRESS, CH_GLOBAL, 0) &&
+           sent_is(1, K_BROWSE, OP_RELEASE, CH_GLOBAL, 0),
+           "a plain browse turn on the performance screen sent %d keycode(s), "
+           "expected BROWSE press + release", sent_n);
+
+     /* A detent before the screen has had time to change is dropped: not a second
+      * BROWSE (which could close it) and not a selector step (which would zoom). */
+     send_cc(6, 64, 1);
+     CHECK(sent_n == 2, "a detent inside the settle window sent %d more keycode(s)",
+           sent_n - 2);
+
+     /* The SHIFT turn is the RX3's own selector there: zoom / grid. */
+     sent_n = 0;
+     send_cc(6, 100, 127);
+     CHECK(sent_n == 1 && sent_is(0, K_SELECTOR, OP_ROTATE, CH_GLOBAL, -1),
+           "a SHIFT browse turn on the performance screen did not rotate the selector");
+
+     /* Off the performance screen the plain turn is the selector, as before. */
+     sent_n = 0;
+     browse_mode = 3;
+     send_cc(6, 64, 1);
+     CHECK(sent_n == 1 && sent_is(0, K_SELECTOR, OP_ROTATE, CH_GLOBAL, 1),
+           "a plain browse turn off the performance screen did not rotate the selector");
+
+     /* SHIFT + CALL < is BACK (global), SHIFT + CALL > is MEMORY (deck 1 -> sch 1). */
+     sent_n = 0;
+     send_note(0, 62, 127);
+     send_note(0, 61, 127);
+     CHECK(sent_n == 2 && sent_is(0, K_BACK, OP_PRESS, CH_GLOBAL, 0) &&
+           sent_is(1, K_CUEMEMORY, OP_PRESS, 1, 0),
+           "SHIFT + CUE/LOOP CALL < / > sent %d keycode(s), expected BACK then MEMORY",
+           sent_n);
 }
 
 static void check_mastervol(void)
@@ -1357,14 +1423,14 @@ int main(void)
      /* The tables' sizes, spelled out rather than merely "non-empty": a row that
       * silently falls off the end of add_note()/add_abs() is a control that stops
       * working, and it would otherwise only show up as an unmapped event.
-      * Deck 1/2 contribute 13 notes each (11 bound: play, cue, jog touch, loop
-      * in, loop out, 4 beat, and the four pad modes hot cue, auto beat loop, beat
-      * jump and slip beat loop -- plus 2 log-only: shift and the other call
-      * button), 8 pads x 4 bases each, and 5 absolute controls; the mixer
-      * contributes 9 notes and 5 knobs, and the Beat FX 2 notes and 2 depth
-      * rows. */
-     CHECK(note_map_n == 101,
-           "the map built %d note rows, expected 101 (2 x (13 + 32) + 9 + 2)",
+      * Deck 1/2 contribute 15 notes each (14 bound: play, cue, jog touch, loop
+      * in, loop out, 4 beat, the four pad modes hot cue, auto beat loop, beat
+      * jump and slip beat loop, and the two CUE/LOOP CALL buttons with their two
+      * SHIFT notes -- plus 1 log-only: shift), 8 pads x 4 bases each, and 5
+      * absolute controls; the mixer contributes 9 notes and 5 knobs, and the
+      * Beat FX 2 notes and 2 depth rows. */
+     CHECK(note_map_n == 105,
+           "the map built %d note rows, expected 105 (2 x (15 + 32) + 9 + 2)",
            note_map_n);
      CHECK(abs_map_n == 17,
            "the map built %d absolute rows, expected 17 (2 x 5 + 5 + 2)",
@@ -1382,6 +1448,7 @@ int main(void)
      check_mastervol();
      check_idle();
      check_leds();
+     check_browse_split();
 
      /* And once more with pacing on, which is the path MIDI_REPLAY_SPEED takes.
       * At this speed every sleep is zero-length, so only the count is asserted:
