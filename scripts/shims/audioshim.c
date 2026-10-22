@@ -1397,8 +1397,12 @@ static void load_config(void)
      * start-rb.sh exports for a knob rb.conf does not set — so the in-source
      * default below reaches only a shim run by hand with no environment at all,
      * exactly as AUDIO_DEV's does. rb.conf ships the list, and rb.local.conf
-     * overrides it per unit. */
-    s = env_str("AUDIO_MIRROR_DEV", AUDIO_MIRROR_DEV_DEFAULT);
+     * overrides it per unit. Not env_str(): it maps "" to the default, which
+     * turned RB_AUDIO_MIRROR_DEV="" back into both HDMI ports (measured on the
+     * Pi 5 unit, 2026-10-22). Only an UNSET variable gets the default. */
+    s = getenv("AUDIO_MIRROR_DEV");
+    if (s == NULL)
+        s = AUDIO_MIRROR_DEV_DEFAULT;
     if (strlen(s) >= sizeof g_cfg.mirror_dev) {
         alog("audioshim: AUDIO_MIRROR_DEV is longer than %u bytes; using the "
              "default %s\n", (unsigned)sizeof g_cfg.mirror_dev - 1,

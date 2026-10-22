@@ -85,3 +85,6 @@ __pycache__/
 
 # This machine's unit address and ssh key, read by tools/fbwatch.py
 /tools/unit.local.conf
+
+# machine-local overrides (per unit, never committed)
+rb.local.conf
