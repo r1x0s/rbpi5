@@ -294,7 +294,7 @@ audioshim.so: audioshim.o s24pack.o mirror_policy.o master_policy.o \
 
 audioshim.o: audioshim.c shmstate.h envutil.h s24pack.h mirror_policy.h \
              master_policy.h pace_policy.h hp_align.h controllers.h usb_devices.h \
-             rbp_abi.h
+             rbp_abi.h startup_gain.h
 s24pack.o: s24pack.c s24pack.h
 
 # hp_align.o is the headphone pair's delay and the probe that measures it
@@ -938,7 +938,7 @@ test_fxpad: test_fxpad.c fxpad_zone.c fxpad_paint.c menu_paint.c menu_zone.c gea
 	    menu_paint.c menu_zone.c side_zone.c
 
 test_audio: test_audio.c s24pack.c s24pack.h mirror_policy.c mirror_policy.h \
-            master_policy.c master_policy.h pace_policy.c pace_policy.h
+            master_policy.c master_policy.h pace_policy.c pace_policy.h startup_gain.h
 	$(CC) -O2 -march=armv5t -mfloat-abi=soft -fno-stack-protector \
 	    -Wall -Wextra -static -o $@ test_audio.c s24pack.c mirror_policy.c \
 	    master_policy.c pace_policy.c -lm

@@ -53,6 +53,7 @@
 #include "mirror_policy.h"
 #include "master_policy.h"
 #include "pace_policy.h"
+#include "startup_gain.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -1329,6 +1330,37 @@ static void test_master_reopen_backoff(void)
     CHECK(buggy > 4 * fixed, "clearing the wait at the open cost nothing at all");
 }
 
+/* The startup mute and fade (startup_gain.h): silent for `mute` frames, a linear
+ * ramp over `fade`, then unity -- and nothing at all when the mute is off. The
+ * shim applies the same function to every pair, which is the fix: the headphone
+ * pair used to skip it and buzzed for ~0.5 s at every start (2026-10-23). */
+static void test_startup_gain(void)
+{
+    const unsigned long long mute = 66150, fade = 13230;   /* 1500 / 300 ms */
+
+    CHECK(startup_gain(0, mute, fade) == 0.0f, "frame 0 is not silent");
+    CHECK(startup_gain(mute - 1, mute, fade) == 0.0f, "the last muted frame is not silent");
+    CHECK(startup_gain(mute, mute, fade) == 0.0f, "the ramp does not start at 0");
+    CHECK(startup_gain(mute + fade / 2, mute, fade) > 0.49f &&
+          startup_gain(mute + fade / 2, mute, fade) < 0.51f, "mid-ramp is not ~0.5");
+    CHECK(startup_gain(mute + fade, mute, fade) == 1.0f, "unity is not reached at mute+fade");
+    CHECK(startup_gain(10 * mute, mute, fade) == 1.0f, "not unity long after the start");
+    CHECK(startup_gain(0, 0, fade) == 1.0f, "a fade without a mute applied (it never did)");
+    CHECK(startup_gain(mute, mute, 0) == 1.0f, "a mute without a fade does not end at mute");
+    CHECK(startup_gain(mute - 1, mute, 0) == 0.0f, "a mute without a fade is not silent");
+    {
+        unsigned long long t;
+        float prev = 0.0f;
+        int mono = 1;
+        for (t = mute; t <= mute + fade; t++) {
+            float g = startup_gain(t, mute, fade);
+            if (g < prev) mono = 0;
+            prev = g;
+        }
+        CHECK(mono, "the ramp is not monotonic");
+    }
+}
+
 int main(void)
 {
     test_parse_and_sizes();
@@ -1351,6 +1383,7 @@ int main(void)
     test_master_verdict();
     test_master_fail_counter();
     test_master_reopen_backoff();
+    test_startup_gain();
 
     printf("test_audio: %d checks, %d failures\n", checks, failures);
     return failures == 0 ? 0 : 1;

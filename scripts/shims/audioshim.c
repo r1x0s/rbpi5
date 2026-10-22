@@ -85,6 +85,7 @@
 #include "mirror_policy.h"
 #include "master_policy.h"
 #include "pace_policy.h"
+#include "startup_gain.h"
 #include "controllers.h"   /* the selected controller's card id */
 #include "hp_align.h"      /* the headphone pair's delay and alignment probe */
 
@@ -4005,6 +4006,24 @@ static void fill_deck_taps(snd_pcm_uframes_t size)
     }
 }
 
+/* The startup mute and fade on one pair of g_out, for the pairs folded in after
+ * flush_master()'s master loop (which applies it inline). */
+static void startup_gain_pair(const struct pair *p, unsigned frames,
+                              unsigned long long t0, unsigned long long mute,
+                              unsigned long long fade)
+{
+    unsigned i;
+
+    if (!pair_mapped(p))
+        return;
+    for (i = 0; i < frames; i++) {
+        float g = startup_gain(t0 + i, mute, fade);
+        int32_t *f = &g_out[i * g_out_channels];
+        f[p->a] = (int32_t)(f[p->a] * g);
+        f[p->b] = (int32_t)(f[p->b] * g);
+    }
+}
+
 static snd_pcm_sframes_t flush_master(const int32_t *src, snd_pcm_uframes_t size)
 {
     /* This process is the one playing, so it -- and not a bring-up helper -- owns the state
@@ -4072,13 +4091,8 @@ static snd_pcm_sframes_t flush_master(const int32_t *src, snd_pcm_uframes_t size
         if ((int32_t)(al * master_gain) > bl) bl = (int32_t)(al * master_gain);
         if ((int32_t)(ar * master_gain) > br) br = (int32_t)(ar * master_gain);
 
-        if (fading) {
-            unsigned long long t = t0 + i;
-            if (t < mute)
-                g = 0.0f;
-            else if (fade > 0 && t < mute + fade)
-                g *= (float)(t - mute) / (float)fade;
-        }
+        if (fading)
+            g *= startup_gain(t0 + i, mute, fade);
         ol = (int32_t)(sl * g);
         or_ = (int32_t)(sr * g);
         /* In external mixer mode the mix goes nowhere: the deck taps below are
@@ -4148,6 +4162,12 @@ static snd_pcm_sframes_t flush_master(const int32_t *src, snd_pcm_uframes_t size
          * on rbp's phone stream, which external mode does not send -- so only
          * here, after the fold, as on the fork before the upstream merge. */
         align_headphones((unsigned)size);
+        /* After the delay line, so whatever it holds from the first blocks is
+         * muted too. See startup_gain.h for why these two pairs need it. */
+        if (fading) {
+            startup_gain_pair(&g_cfg.headphones, (unsigned)size, t0, mute, fade);
+            startup_gain_pair(&g_cfg.booth, (unsigned)size, t0, mute, fade);
+        }
     } else {
         fill_deck_taps(size);
     }
