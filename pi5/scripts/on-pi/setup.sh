@@ -1,6 +1,7 @@
 #!/bin/sh
 # on-pi/setup.sh -- runs ON the Pi as root, copied there by pi5/scripts/pi-setup.sh.
-# Env: PANEL_CONNECTOR PANEL_MODE PANEL_ROTATE MIDI_MAP USB_POWERCYCLE. Idempotent.
+# Env: PANEL_CONNECTOR PANEL_MODE PANEL_ROTATE MIDI_MAP BOOT_NET_INSTALL USB_POWERCYCLE.
+# Idempotent.
 # Tests (not root, no apt/systemctl): SDJ_TEST=1 SDJ_BOOT=<dir> SDJ_LOCAL=<file>.
 set -eu
 say() { echo "pi-setup: $*"; }
@@ -20,9 +21,9 @@ replace() { cat > "$1.sdj-new" && mv "$1.sdj-new" "$1"; }
 
 # --- packages --------------------------------------------------------------
 # gcc/make: install.sh builds vncserve on the unit. python3: boot screen and
-# status page. uhubctl: USB power-cycle at boot (a bus-powered FLX4 does not
-# enumerate on the Pi 5 otherwise).
-PKGS="gcc make python3 uhubctl"
+# status page. uhubctl: only for the USB power-cycle fallback (USB_POWERCYCLE=1).
+PKGS="gcc make python3"
+[ "${USB_POWERCYCLE:-0}" = 1 ] && PKGS="$PKGS uhubctl"
 missing=""
 [ -n "${SDJ_TEST:-}" ] && PKGS=""
 for p in $PKGS; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
@@ -99,10 +100,44 @@ fi
 done
 [ "${masked:-0}" = 1 ] && say "PipeWire user units masked"
 
-# --- USB power-cycle at boot (rblive4-usb.service) ---------------------------
+# --- bootloader: no network-install USB scan (the FLX4 at boot) --------------
+# Measured 2026-10-26: with network install enabled (the Pi 5 default) the
+# bootloader initialises USB at power-on to look for a keyboard shortcut, and that
+# first contact leaves a DDJ-FLX4 stuck -- its port reads "not attached" after a
+# cold start and a reboot alike, until the controller's power drops. With
+# NET_INSTALL_ENABLED=0 it enumerates at 0.94 s either way. The EEPROM config is
+# written by the bootloader at the next reboot; the old one is kept once in
+# /var/lib/rbpi5/eeprom.conf.sdj-bak. BOOT_NET_INSTALL=1 leaves the EEPROM alone.
+if [ -z "${SDJ_TEST:-}" ] && [ "${BOOT_NET_INSTALL:-0}" = 0 ]; then
+    if ! command -v rpi-eeprom-config >/dev/null 2>&1; then
+        warn "no rpi-eeprom-config: bootloader left alone (a DDJ-FLX4 may need a replug after boot)"
+    elif rpi-eeprom-config 2>/dev/null | grep -q '^NET_INSTALL_ENABLED=0'; then
+        say "bootloader: NET_INSTALL_ENABLED=0 already set"
+    else
+        mkdir -p /var/lib/rbpi5
+        eeprom=$(mktemp)
+        rpi-eeprom-config > "$eeprom"
+        [ -f /var/lib/rbpi5/eeprom.conf.sdj-bak ] || cp "$eeprom" /var/lib/rbpi5/eeprom.conf.sdj-bak
+        grep -v '^NET_INSTALL_ENABLED=' "$eeprom" > "$eeprom.new"
+        echo NET_INSTALL_ENABLED=0 >> "$eeprom.new"
+        if rpi-eeprom-config --apply "$eeprom.new" >/dev/null; then
+            say "bootloader: NET_INSTALL_ENABLED=0 staged (written at the next reboot)"
+            REBOOT=1
+        else
+            warn "bootloader: could not stage NET_INSTALL_ENABLED=0; a DDJ-FLX4 may need a replug after boot"
+        fi
+        rm -f "$eeprom" "$eeprom.new"
+    fi
+fi
+
+# --- USB power-cycle at boot (rblive4-usb.service): FALLBACK, off by default ---
+# Superseded by the bootloader setting above. For a unit whose EEPROM cannot be
+# changed: VBUS off on all ports once at boot when no controller has shown up.
+# It also switches off whatever else the Pi's USB powers (a USB-fed panel goes
+# dark for a few seconds).
 HERE=$(cd "$(dirname "$0")" && pwd)
 if [ -z "${SDJ_TEST:-}" ]; then
-    if [ "${USB_POWERCYCLE:-1}" = 1 ]; then
+    if [ "${USB_POWERCYCLE:-0}" = 1 ]; then
         install -D -m 755 "$HERE/usb-powercycle.sh" /usr/local/lib/rbpi5/usb-powercycle.sh
         install -m 644 "$HERE/rblive4-usb.service" /etc/systemd/system/rblive4-usb.service
         systemctl daemon-reload

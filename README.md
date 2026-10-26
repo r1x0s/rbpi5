@@ -67,7 +67,8 @@ Every step can be re-run; a second run upgrades what is there.
 | `PANEL_CONNECTOR` | `HDMI-A-1` / `HDMI-A-2` | HDMI-A-1 is the port next to the USB-C power |
 | `PANEL_ROTATE` | `0` / `180` | default `0`; `180` only for an upside-down panel, see below |
 | `MIDI_MAP` | `auto` / `flx4` / `grv6` | `auto`: the map of the controller plugged in at start |
-| `USB_POWERCYCLE` | `1` / `0` | power-cycle USB at boot when no controller enumerated (a bus-powered FLX4 needs it) |
+| `BOOT_NET_INSTALL` | `0` / `1` | `0` (default): bootloader EEPROM `NET_INSTALL_ENABLED=0`, without which a DDJ-FLX4 does not enumerate at boot; `1`: leave the bootloader alone |
+| `USB_POWERCYCLE` | `0` / `1` | fallback if the bootloader cannot be changed: power-cycle USB at boot when no controller enumerated (a USB-powered panel goes dark meanwhile) |
 
 ### Upside-down panel (optional)
 

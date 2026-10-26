@@ -30,11 +30,19 @@
 - **USB power.** With the official 27 W PSU the ports give 1.6 A in total, without
   it 0.6 A. The FLX4 is bus-powered, so it needs that PSU (or a powered hub).
   **The GRV6 only on its own adapter.**
-- **The FLX4 does not enumerate at boot**: VBUS is up before xHCI. Only switching
-  power off on all root hubs brings it, so `rblive4-usb.service`
-  (`pi5/scripts/on-pi/usb-powercycle.sh`, `uhubctl`) runs before the player when
-  no controller has shown up. It is a workaround; a cleaner fix is welcome.
-  `USB_POWERCYCLE=0` in `pi.env` turns it off.
+- **The FLX4 at boot: the bootloader.** With network install enabled (the Pi 5
+  default) the bootloader initialises USB at power-on to look for a keyboard
+  shortcut; that first contact leaves a DDJ-FLX4 stuck, and its port reads "not
+  attached" after a cold start and a reboot alike until the controller's power
+  drops (measured 2026-10-26). `make pi-setup` sets **`NET_INSTALL_ENABLED=0`** in
+  the bootloader EEPROM (old config kept in `/var/lib/rbpi5/eeprom.conf.sdj-bak`);
+  with it the FLX4 enumerates at 0.94 s either way. By hand:
+  `sudo rpi-eeprom-config > e.conf; echo NET_INSTALL_ENABLED=0 >> e.conf;
+  sudo rpi-eeprom-config --apply e.conf`, then reboot. The cost: no network-install
+  screen from a USB keyboard at power-on. `BOOT_NET_INSTALL=1` in `pi.env` leaves
+  the EEPROM alone; then `USB_POWERCYCLE=1` is the fallback (`rblive4-usb.service`:
+  VBUS off on all root hubs once at boot, `uhubctl`), which also blanks a panel fed
+  from the Pi's USB.
 - **PipeWire** grabs the controller's MIDI and audio on an SSH login;
   `make pi-setup` masks its user units.
 - **No HDMI audio**: the HDMI audio mirror is off (`RB_AUDIO_MIRROR_DEV=""`).

@@ -7,8 +7,10 @@
 #   /boot/firmware/config.txt   [pi5] kernel=kernel8.img  (4 KB pages: the chroot needs them)
 #   /boot/firmware/cmdline.txt  video=<connector>:<mode>[,rotate=180] + console off the panel
 #   /opt/rblive4/rb.local.conf  controller map, touch axes, boot trim
-#   packages                    gcc make python3 uhubctl
-#   rblive4-usb.service         USB power-cycle at boot for a bus-powered FLX4 (USB_POWERCYCLE=1)
+#   packages                    gcc make python3 (+ uhubctl with USB_POWERCYCLE=1)
+#   bootloader EEPROM           NET_INSTALL_ENABLED=0, so a DDJ-FLX4 enumerates at boot
+#                               (BOOT_NET_INSTALL=1 leaves it; old config: /var/lib/rbpi5/)
+#   rblive4-usb.service         fallback USB power-cycle at boot (USB_POWERCYCLE=1, off by default)
 #   default target              multi-user (no desktop fighting for the display)
 set -eu
 . "$(dirname "$0")/lib.sh"
@@ -28,7 +30,7 @@ pi 'cat /proc/device-tree/model; echo' | tr -d '\0' | grep -q 'Raspberry Pi 5' |
 
 pi "rm -rf /tmp/rbpi5-setup"
 pi_cp -r "$ROOT/pi5/scripts/on-pi" "$PI_HOST:/tmp/rbpi5-setup"
-pi_t "sudo PANEL_CONNECTOR='$PANEL_CONNECTOR' PANEL_MODE='$PANEL_MODE' PANEL_ROTATE='$PANEL_ROTATE' MIDI_MAP='$MIDI_MAP' USB_POWERCYCLE='${USB_POWERCYCLE:-1}' sh /tmp/rbpi5-setup/setup.sh"
+pi_t "sudo PANEL_CONNECTOR='$PANEL_CONNECTOR' PANEL_MODE='$PANEL_MODE' PANEL_ROTATE='$PANEL_ROTATE' MIDI_MAP='$MIDI_MAP' BOOT_NET_INSTALL='${BOOT_NET_INSTALL:-0}' USB_POWERCYCLE='${USB_POWERCYCLE:-0}' sh /tmp/rbpi5-setup/setup.sh"
 
 pi 'test -f /tmp/rbpi5-reboot-needed' || exit 0
 if [ "${AUTO_REBOOT:-}" != 1 ]; then

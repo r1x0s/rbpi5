@@ -3,7 +3,10 @@ Description=rblive4 - power-cycle USB once at boot if the DJ controller did not 
 # A bus-powered DDJ-FLX4 does not enumerate on a Pi 5 at boot until VBUS is
 # switched off and on (usb-powercycle.sh says how that was measured). Once per
 # boot (RemainAfterExit=), before rbp opens the controller. Installed by
-# pi5/scripts/pi-setup.sh; USB_POWERCYCLE=0 in pi.env removes it.
+# pi5/scripts/pi-setup.sh with USB_POWERCYCLE=1 in pi.env -- a FALLBACK since
+# 2026-10-26: the cause was the bootloader's network-install USB scan, and
+# NET_INSTALL_ENABLED=0 (BOOT_NET_INSTALL=0, the default) fixes it without
+# cutting power. Off by default.
 After=systemd-udev-trigger.service systemd-udevd.service
 Before=rblive4.service rblive4-boot.service
 
