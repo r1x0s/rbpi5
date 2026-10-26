@@ -143,6 +143,17 @@ int me_get_cue(int idx)
           return -1;
      return ((int (*)(void *, int))ME_GET_CUE)(engine, input);
 }
+int me_get_cfx_type(int idx)
+{
+     void *engine = mixer_engine();
+     int input;
+     if (!engine)
+          return -1;
+     input = me_channel_input(engine, idx);
+     if (input < 0)
+          return -1;
+     return ((int (*)(void *, int))ME_GET_CFX_TYPE)(engine, input);
+}
 void me_set_stereo(int type)
 {
      void *engine = mixer_engine();

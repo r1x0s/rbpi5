@@ -268,6 +268,22 @@ struct led_notes {
       * default to channel 0 / note 0, which is a real LED on most surfaces. */
      int cfx_any_ch1;      /* send channel + 1; 0 = none */
      int n_cfx_any;        /* its note */
+
+     /* The deck QUANTIZE LED, on the deck channel like the rest of the deck
+      * group, lit while rbp's deck is quantizing (PlayEngine::isQuantizing). The
+      * NOTE is stored plus one for cfx_any_ch1's reason: a table that never names
+      * it reads 0 = no such LED. The GRV6 is the first surface with one. */
+     int n_quantize1;      /* note + 1; 0 = none */
+
+     /* The jog's centre indicator: a CC per deck (deck d on jog_cc + d) whose
+      * value is the indicator's angle from 1, about 5 degrees a value, clockwise
+      * (0 and 80.. are dark; measured on the GRV6 2026-10-23; the turn's length
+      * is JOG_LED_STEPS, default 72). Driven from
+      * the playhead at 33 1/3 rpm, so it turns with play and with the platter.
+      * The channel is stored plus one: 0 = no such display. MEASURED on the
+      * GRV6 2026-10-23: ch 15, CC 0..3 = decks 1..4. */
+     int jog_ch1;          /* send channel + 1; 0 = none */
+     int jog_cc;           /* deck 1's CC */
 };
 
 /* Empty both tables. Called by the front end exactly once, before any build():

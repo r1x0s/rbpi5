@@ -194,8 +194,25 @@ static void record(int kind, int key, int op, int ch, long param, float fval,
      sent_n++;
 }
 
+
+/* rbp's per-channel Sound Color FX type (rbp_abi.h ME_GET_CFX_TYPE), simulated
+ * from the type keys the map sends: a type key on channel 1/2 selects that type
+ * there, or switches it off if it is the one selected -- rbp's own rule. */
+static int sim_cfx[2];
+int me_get_cfx_type(int idx)         { return (idx == 0 || idx == 1) ? sim_cfx[idx] : -1; }
+static void sim_cfx_key(int key, int op, int ch)
+{
+     static const int keys[7] = { 0, K_FILTER, K_NOISE, K_SWEEP, K_DUBECHO, K_SPACE, K_CRUSH };
+     if (op != OP_PRESS || ch < 1 || ch > 2)
+          return;
+     for (int t = 1; t <= 6; t++)
+          if (key == keys[t])
+               sim_cfx[ch - 1] = (sim_cfx[ch - 1] == t) ? 0 : t;
+}
+
 void send_rx_key(int keycode, int op, int ch, long param)
 {
+     sim_cfx_key(keycode, op, ch);
      record(0, keycode, op, ch, param, 0.0f, 0);
 }
 
@@ -253,6 +270,11 @@ int rbp_beatfx_type(void)
  * the browse rows below stay the selector's; check_browse_split() moves it. */
 static int browse_mode = 3;
 int rbp_browse_mode(void)            { return browse_mode; }
+
+/* map_ux.c's two LED-side readers. The FLX4 map does not use the slip roll or the
+ * momentary Beat FX, so these only have to link. */
+int rbp_padmode(int deck)                              { (void)deck; return 0; }
+int rbp_ledstat_state(unsigned int id, unsigned int ch) { (void)id; (void)ch; return -1; }
 
 /* The map only asks for the engine pointer while logging (verbose is 0 here), and
  * the mixer calls below are stubbed outright, so NULL is never dereferenced. */
@@ -505,10 +527,13 @@ static const struct expect expect[] = {
      /* The headphone knobs also land in g_cue_mix / g_cue_gain, asserted below. */
      { 1, K_HPMIX,          OP_VALUE,   1, 516,  516.0f / 1023.0f, 0, 0 },
      { 1, K_HPLEVEL,        OP_VALUE,   1, 0,    0.0f, 0, 0 },
-     /* SMART CFX toggles CFX: it presses the current type, Filter (one press and
-      * release, rbp ch 1); SMART FADER is SOURCE (the fixture sends no NOTEOFF). */
+     /* SMART CFX toggles CFX on BOTH mixer channels (rbp's type is per channel):
+      * both read OFF, so Filter is pressed on rbp ch 1 and ch 2; SMART FADER is
+      * SOURCE (the fixture sends no NOTEOFF). */
      { 0, K_FILTER,         OP_PRESS,   1, 0,    0.0f, 0, 0 },
      { 0, K_FILTER,         OP_RELEASE, 1, 0,    0.0f, 0, 0 },
+     { 0, K_FILTER,         OP_PRESS,   2, 0,    0.0f, 0, 0 },
+     { 0, K_FILTER,         OP_RELEASE, 2, 0,    0.0f, 0, 0 },
      { 0, K_SOURCE,         OP_PRESS,   1, 0,    0.0f, 0, 0 },
 
      /* ---- Beat FX ---- */
@@ -909,19 +934,26 @@ static void check_browse_split(void)
            "SHIFT + CUE/LOOP CALL < / > sent %d keycode(s), expected BACK then MEMORY",
            sent_n);
 
-     /* SMART CFX after the fixture's one press: Filter is off. SHIFT + SMART CFX
-      * steps to Space (on), again to Dub Echo; then SMART CFX presses Dub Echo
-      * twice -- off, and on again. */
+     /* SMART CFX after the fixture's one press: Filter on both channels. SHIFT +
+      * SMART CFX steps both to Space, again to Dub Echo; then SMART CFX presses
+      * Dub Echo on each -- off -- and again -- on. Every step is one press per
+      * channel, and the simulated rbp agrees at each end. */
      sent_n = 0;
+     CHECK(sim_cfx[0] == 1 && sim_cfx[1] == 1, "the fixture's SMART CFX left %d/%d, not Filter on both",
+           sim_cfx[0], sim_cfx[1]);
      send_note(6, 8, 127);
      send_note(6, 8, 127);
      send_note(6, 0, 127);
+     CHECK(sim_cfx[0] == 0 && sim_cfx[1] == 0, "SMART CFX off left %d/%d", sim_cfx[0], sim_cfx[1]);
      send_note(6, 0, 127);
-     CHECK(sent_n == 8 && sent_is(0, K_SPACE, OP_PRESS, 1, 0) &&
-           sent_is(1, K_SPACE, OP_RELEASE, 1, 0) &&
-           sent_is(2, K_DUBECHO, OP_PRESS, 1, 0) && sent_is(4, K_DUBECHO, OP_PRESS, 1, 0) &&
-           sent_is(6, K_DUBECHO, OP_PRESS, 1, 0),
+     CHECK(sent_n == 16 && sent_is(0, K_SPACE, OP_PRESS, 1, 0) &&
+           sent_is(1, K_SPACE, OP_RELEASE, 1, 0) && sent_is(2, K_SPACE, OP_PRESS, 2, 0) &&
+           sent_is(4, K_DUBECHO, OP_PRESS, 1, 0) && sent_is(6, K_DUBECHO, OP_PRESS, 2, 0) &&
+           sent_is(8, K_DUBECHO, OP_PRESS, 1, 0) && sent_is(10, K_DUBECHO, OP_PRESS, 2, 0) &&
+           sent_is(12, K_DUBECHO, OP_PRESS, 1, 0) && sent_is(14, K_DUBECHO, OP_PRESS, 2, 0),
            "the SMART CFX step/step/off/on sequence sent %d keycode(s)", sent_n);
+     CHECK(sim_cfx[0] == 4 && sim_cfx[1] == 4, "SMART CFX on left %d/%d, not Dub Echo on both",
+           sim_cfx[0], sim_cfx[1]);
 
      /* SHIFT + browse push on the performance screen sends nothing: there is no
       * browser to leave, and a BROWSE would open one. */

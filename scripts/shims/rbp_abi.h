@@ -425,6 +425,12 @@
  */
 #define ME_SINGLETON   0x011493c0UL
 #define ME_SET_CUE     0x000575a0UL
+/* mixerengine::MixerEngine::getSoundColorFxType(EnMixerInput) @0x57408: the
+ * channel whose input matches, MixerChannel::getSoundColorFxType() -- 0 OFF,
+ * 1 FILTER, 2 NOISE, 3 SWEEP, 4 DUBECHO, 5 SPACE, 6 CRUSH (djengine::c_str
+ * @0x50fac). The type is PER CHANNEL: ui::MixerChInnards::onEv_ColorFxSW
+ * @0x2d3684 sets it for its own channel only (2026-10-23). */
+#define ME_GET_CFX_TYPE 0x00057408UL
 #define ME_GET_CUE     0x000575e8UL
 
 /* Headphone stereo type: 0 = stereo, 1 = mono split (L = cue, R = master).
@@ -774,6 +780,11 @@ static const signed char bfx_type_to_pos[15] = {
 #define PE_ISMASTERTEMPO   0x5dfa8
 #define PE_ISVINYLMODE     0x5e260
 #define PE_ISSLIPMODEON    0x5fc60
+#define PE_GETPLAYINGPOS   0x5d950   /* playengine::PlayEngine::getPlayingPosition(EnPlayerChannel):
+                                       * the playhead in frames at 44100 (getPlayingTime @0x5d9cc is
+                                       * the same word x 0.022675737 = ms). 2026-10-23 */
+#define PE_ISQUANTIZING    0x5f6ec   /* playengine::PlayEngine::isQuantizing(EnPlayerChannel), what
+                                       * DjEngineIF::isDeckQuantizing @0x4aa88 returns (2026-10-23) */
 #define PE_ISLOOPING       0x5eadc
 #define PE_ISCANRELOOP     0x5eab0
 #define PE_ISAUTOBEATLOOP  0x5ef74

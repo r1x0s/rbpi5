@@ -67,7 +67,7 @@ int led_loop_armed[2];
  * comes from the surface's table; "which of the nine is this" is rbp-side (each
  * slot maps to a different predicate below), so the index lives here. */
 enum {
-     L_SYNC, L_CUE, L_PLAY, L_KEYLOCK, L_VINYL, L_SLIP,
+     L_SYNC, L_CUE, L_PLAY, L_KEYLOCK, L_VINYL, L_SLIP, L_QUANT,
      L_LOOPIN, L_LOOPOUT, L_ALOOP,
      L_MODE0, L_MODE1, L_MODE2, L_MODE3, L_SLOT_COUNT
 };
@@ -314,6 +314,17 @@ static int ledstat_state(unsigned int id, unsigned int ch)
      return (int)*(const unsigned int *)(e + LED_ENTRY_OFF_STATE);
 }
 
+/* rbp_led.h: the two readers the maps use (map_ux.c). */
+int rbp_ledstat_state(unsigned int id, unsigned int ch)
+{
+     return ledstat_state(id, ch);
+}
+
+int rbp_padmode(int deck)
+{
+     return rbp_pad_mode(deck);
+}
+
 /* rbp's own blink period for this LED, in ms, or 0 when rbp is not asking for
  * one. See LED_ENTRY_OFF_PERIOD for what makes this a reading: on the unit the
  * only entries carrying a non-zero value are the ones whose State is 2, and an
@@ -422,6 +433,56 @@ static int led_blink_for(unsigned int id, unsigned int ch)
  * the send actually happened: midi_note() returns 0 when no route is up yet, and
  * leaving the cell alone is what makes the LED go out on the next tick instead of
  * being lost. */
+/* The jog centre indicator (ctrl_map.h, jog_ch1/jog_cc): the playhead as an
+ * angle at a record's 33 1/3 rpm, JOG_LED_STEPS values a turn. Sent on change,
+ * and with the periodic resend like every other LED. */
+#define JOG_RPM 33.333
+static int led_jog_last[2] = { -1, -1 };
+static void led_jog(const struct led_notes *n, void *pe, int deck)
+{
+     long frames = ((long (*)(void *, int))PE_GETPLAYINGPOS)(pe, deck);
+     double rev = (double)frames / 44100.0 * (JOG_RPM / 60.0);
+     double frac = rev - (double)(long long)rev;
+     if (frac < 0.0)
+          frac += 1.0;
+     /* MEASURED on the GRV6 2026-10-23: 0 = dark, then clockwise from 12
+      * o'clock at about 5 degrees a value (16 = ~2:30, 32 = ~4:30, 48 = ~7:30,
+      * 64 = ~10:00); 80 and above dark. A turn of 64 jumped from 10 to 12 at the
+      * wrap, so the turn is longer: JOG_LED_STEPS, default 72, from 1. */
+     static int steps;
+     if (!steps) {
+          steps = env_num("JOG_LED_STEPS", 72);
+          if (steps < 8 || steps > 127)
+               steps = 72;
+     }
+     int v = 1 + (int)(frac * (double)steps);
+     if (v > steps)
+          v = steps;
+     if (!led_force && v == led_jog_last[deck])
+          return;
+     if (midi_cc(n->jog_ch1 - 1, n->jog_cc + deck, v))
+          led_jog_last[deck] = v;
+}
+
+/* The jog indicator between the 20 Hz refreshes (led_thread): only on change,
+ * never the periodic resend -- led_refresh() carries that. */
+static void led_jog_fast(void)
+{
+     const struct led_notes *n = led_notes_sel();
+     void *pe;
+     int force = led_force;
+
+     if (led_disabled || !n || n->jog_ch1 <= 0 || !midi_out_ready())
+          return;
+     pe = *(void **)PLAYENGINE_GLOBAL;
+     if (!pe)
+          return;
+     led_force = 0;
+     led_jog(n, pe, 0);
+     led_jog(n, pe, 1);
+     led_force = force;
+}
+
 static void led_send(int sch, int note, signed char *last, int on)
 {
      signed char want = (signed char)(on ? 1 : 0);
@@ -719,6 +780,7 @@ static void led_refresh(void)
           int mt      = ((int (*)(void *, int))PE_ISMASTERTEMPO)(pe, i) != 0;
           int vinyl   = ((int (*)(void *, int))PE_ISVINYLMODE)(pe, i) != 0;
           int slip    = ((int (*)(void *, int))PE_ISSLIPMODEON)(pe, i) != 0;
+          int quant   = ((int (*)(void *, int))PE_ISQUANTIZING)(pe, i) != 0;
           int looping = ((int (*)(void *, int))PE_ISLOOPING)(pe, i) != 0;
           int canrel  = ((int (*)(void *, int))PE_ISCANRELOOP)(pe, i) != 0;
           int aloop   = ((int (*)(void *, int))PE_ISAUTOBEATLOOP)(pe, i) != 0;
@@ -749,6 +811,9 @@ static void led_refresh(void)
           led_send(sch, n->n_keylock, &led_last[i][L_KEYLOCK], mt);
           led_send(sch, n->n_vinyl, &led_last[i][L_VINYL], vinyl);
           led_send(sch, n->n_slip, &led_last[i][L_SLIP], slip);
+          led_send(sch, n->n_quantize1 - 1, &led_last[i][L_QUANT], quant);
+          if (n->jog_ch1 > 0)
+               led_jog(n, pe, i);
           /* SC Live 4 convention (verified against Engine OS on video):
            *   idle            -> both LEDs solid ON
            *   loop-in set     -> LOOP IN blinks, LOOP OUT solid
@@ -1038,7 +1103,13 @@ void *led_thread(void *arg)
                led_dump_scan();
           led_refresh();
           led_tick++;
-          usleep(50000);   /* 20 Hz */
+          /* 20 Hz for everything, 100 Hz for the jog indicator: at 33 1/3 rpm it
+           * moves ~40 of its 72 steps a second, so a 20 Hz update visibly
+           * skipped every other step (operator, 2026-10-23). */
+          for (int k = 0; k < 5; k++) {
+               usleep(10000);
+               led_jog_fast();
+          }
      }
      return NULL;
 }

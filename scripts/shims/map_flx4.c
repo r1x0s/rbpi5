@@ -69,7 +69,7 @@
  *     documented as something the *application* sets -- see the LED block);
  *   - the Sound Color FX TYPE (the unit has CFX knobs but no CFX buttons), which
  *     is why flx4_startup() picks Filter -- and why SMART CFX, a rekordbox
- *     feature rbp lacks, now steps through rbp's six types (flx4_cfx_button());
+ *     feature rbp lacks, now steps through rbp's six types (ux_cfx_button());
  *   - the unit's extra pad modes: rbp has four and this section has more, so
  *     KEYBOARD, PAD FX 2, BEAT LOOP and KEY SHIFT reach nothing at all (see the
  *     pad block in flx4_build());
@@ -124,8 +124,6 @@
  */
 #define _GNU_SOURCE
 #include <stdint.h>         /* uint32_t, for the two mixer-route words */
-#include <fcntl.h>          /* the launcher's return request */
-#include <unistd.h>
 #include <sound/asequencer.h>
 
 #include "shimutil.h"
@@ -135,6 +133,7 @@
 #include "rbp_vu.h"         /* g_fader / g_fader_seen: the meter scaling input */
 #include "pitch_state.h"    /* g_pitch_norm: what the edge drawers' nudge moves from */
 #include "ctrl_map.h"
+#include "map_ux.h"         /* browse, CFX, search, return: shared with the GRV6 */
 
 /* ---- receive channels, 0-based (the list's channel minus one) -------------
  * See the PROVENANCE note above: this is the conversion a dump has to confirm. */
@@ -217,10 +216,10 @@
  * may be moved to the other's channel. 122 is used nowhere else in this map. */
 #define N_LOAD1_SHIFT 104 /* SHIFT + LOAD deck 1 -> rbp's TRACK FILTER panel */
 #define N_LOAD2_SHIFT 122 /* SHIFT + LOAD deck 2 -> rbp's SHORTCUT view */
-#define N_SMART_CFX   0   /* SMART CFX          (+SHIFT 8)  -> CFX type cycle, see flx4_cfx_button() */
+#define N_SMART_CFX   0   /* SMART CFX          (+SHIFT 8)  -> CFX type cycle, see ux_cfx_button() */
 #define N_SMART_CFX_SHIFT 8
 #define N_SMART_FADER 1   /* SMART FADER        (+SHIFT 9)  -> SOURCE (rekordbox's feature has no rbp equivalent) */
-#define N_SMART_FADER_SHIFT 9   /* held RETURN_HOLD_MS -> back to the boot menu, see flx4_return_tick() */
+#define N_SMART_FADER_SHIFT 9   /* held RETURN_HOLD_MS -> back to the boot menu, see ux_return_tick() */
 #define N_MONO_STEREO 109 /* Android MONO/STEREO            -- no rbp equivalent */
 
 /* ---- Beat FX (list ch 5, with a second leg on ch 6) --------------------- */
@@ -404,29 +403,6 @@ static void flx4_log_only(int ch, int note)
  * The cursor starts on Filter because flx4_startup() selects it. One press, on
  * rbp channel 1: the selection is global, so a second press on channel 2 would
  * be the "same type again" that switches it off. */
-static const int cfx_cycle[] = { K_FILTER, K_SPACE, K_DUBECHO, K_SWEEP, K_NOISE, K_CRUSH };
-#define CFX_CYCLE_N ((int)(sizeof cfx_cycle / sizeof cfx_cycle[0]))
-static int cfx_pos;            /* index into cfx_cycle: what rbp has selected */
-static int cfx_off;            /* SMART CFX switched it off */
-
-static void cfx_press(int key)
-{
-     send_rx_key(key, OP_PRESS, 1, 0);
-     send_rx_key(key, OP_RELEASE, 1, 0);
-}
-
-static void flx4_cfx_button(int shift)
-{
-     if (shift) {
-          cfx_pos = (cfx_pos + 1) % CFX_CYCLE_N;
-          cfx_off = 0;
-     } else {
-          cfx_off = !cfx_off;
-     }
-     cfx_press(cfx_cycle[cfx_pos]);
-     klog("knobshim2: SMART CFX -> type %d (0x%04x)%s\n", cfx_pos,
-          cfx_cycle[cfx_pos], cfx_off ? " off" : "");
-}
 
 /* SHIFT + SMART FADER, HELD, -> back to the boot menu (rblaunch, the Pi's
  * system chooser; launcher/ in the standalonedj project). The launcher's
@@ -435,36 +411,11 @@ static void flx4_cfx_button(int shift)
  * then starts the menu, which stops this player through Conflicts=. Held for
  * RETURN_HOLD_MS so a brush of the button in the middle of a set cannot end it;
  * a release before that cancels. Sent once per hold. */
-static int return_hold_ms = 2000;
-static const char *return_request = "/tmp/rblaunch.request";
-static unsigned long long return_down_ms;     /* 0 = not held */
-static int return_sent;
-
-static void flx4_return_tick(void)
-{
-     if (!return_down_ms || return_sent)
-          return;
-     if (shim_now_ms() - return_down_ms < (unsigned long long)return_hold_ms)
-          return;
-     return_sent = 1;
-     int fd = open(return_request, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
-     if (fd >= 0) {
-          (void)!write(fd, "flx4\n", 5);
-          close(fd);
-     }
-     klog("knobshim2: SHIFT + SMART FADER held -> back to the boot menu (%s: %s)\n",
-          return_request, fd >= 0 ? "written" : "could not write");
-}
 
 static void flx4_note(int ch, int note, int on)
 {
      if (ch == CH_MIX && note == N_SMART_FADER_SHIFT) {
-          if (on) {
-               return_down_ms = shim_now_ms();
-               return_sent = 0;
-          } else {
-               return_down_ms = 0;
-          }
+          ux_return_edge(on);
           return;
      }
 
@@ -474,18 +425,14 @@ static void flx4_note(int ch, int note, int on)
       * would open the browser, which the plain browse turn already does. BACK
       * (one level up inside the browser) is SHIFT + CUE/LOOP CALL <. */
      if (ch == CH_MIX && note == N_BROWSE_PUSH_SHIFT) {
-          if (on && rbp_browse_mode() != BROWSE_MODE_PLAY) {
-               send_rx_key(K_BROWSE, OP_PRESS, CH_GLOBAL, 0);
-               send_rx_key(K_BROWSE, OP_RELEASE, CH_GLOBAL, 0);
-               if (verbose)
-                    klog("knobshim2: SHIFT + browse push -> BROWSE (leave the browser)\n");
-          }
+          if (on)
+               ux_browse_exit();
           return;
      }
 
      if (ch == CH_MIX && (note == N_SMART_CFX || note == N_SMART_CFX_SHIFT)) {
           if (on)
-               flx4_cfx_button(note == N_SMART_CFX_SHIFT);
+               ux_cfx_button(note == N_SMART_CFX_SHIFT);
           return;
      }
 
@@ -765,33 +712,12 @@ static void flx4_cc_abs(int ch, int cc, int val)
  * in that window would still read PLAY: they are dropped rather than sent as a
  * second BROWSE (which could close the screen it just opened) or as a selector
  * step (which would zoom). */
-#define BROWSE_OPEN_SETTLE_MS 400
-static unsigned long long browse_open_ms;
-
 static void flx4_browse(int cc, int val)
 {
      if (val < 0 || val > 127)
           return;
      int delta = (val >= 64) ? (val - 128) : val;
-     if (delta == 0)
-          return;
-     if (cc == CC_BROWSE && rbp_browse_mode() == BROWSE_MODE_PLAY) {
-          unsigned long long t = shim_now_ms();
-          if (browse_open_ms != 0 && t - browse_open_ms < BROWSE_OPEN_SETTLE_MS)
-               return;
-          browse_open_ms = t;
-          send_rx_key(K_BROWSE, OP_PRESS, CH_GLOBAL, 0);
-          send_rx_key(K_BROWSE, OP_RELEASE, CH_GLOBAL, 0);
-          if (verbose)
-               klog("knobshim2: browse knob on the performance screen -> BROWSE\n");
-          return;
-     }
-     int key = K_SELECTOR;
-     long n = (long)delta * (long)knob_scale;
-     send_rx_key(key, OP_ROTATE, CH_GLOBAL, n < 0 ? -1 : 1);
-     if (verbose)
-          klog("knobshim2: browse knob v=%d delta=%ld -> 0x%04x rotate\n",
-               val, n, key);
+     ux_browse_turn(cc == CC_BROWSE_SHIFT, delta * knob_scale);
 }
 
 /* The jog: one message is one count since the last one, so nothing is
@@ -847,47 +773,15 @@ static void flx4_jog(int ch, int val)
  * through the track). rbp's SEARCH keys are HELD keys -- the RX3's search buttons
  * scan while pressed -- so the platter is a hold, not a per-count step: the first
  * count in a direction presses, a count the other way swaps the press, and
- * SEARCH_IDLE_MS without a count releases (from tick()). */
-#define SEARCH_IDLE_MS 150
-static struct {
-     int dir;                       /* -1, 0 (nothing held) or +1 */
-     unsigned long long last_ms;
-} search_state[2];
-
-static void search_release(int idx)
-{
-     if (search_state[idx].dir == 0)
-          return;
-     send_rx_key(search_state[idx].dir > 0 ? K_SRFWD : K_SRREV, OP_RELEASE, 1 + idx, 0);
-     search_state[idx].dir = 0;
-}
-
+ * UX_SEARCH_IDLE_MS without a count releases (from tick(); map_ux.c). */
 static void flx4_jog_search(int ch, int val)
 {
-     int idx = (ch == CH_DECK2) ? 1 : 0;
      int d = val - 0x40;
      if (d == 0)
           return;
      if (jog_rev)
           d = -d;
-     int dir = d > 0 ? 1 : -1;
-     search_state[idx].last_ms = shim_now_ms();
-     if (search_state[idx].dir == dir)
-          return;
-     search_release(idx);
-     send_rx_key(dir > 0 ? K_SRFWD : K_SRREV, OP_PRESS, 1 + idx, 0);
-     search_state[idx].dir = dir;
-     if (jog_verbose)
-          klog("knobshim2: SHIFT+jog ch%d -> SEARCH %s\n", ch, dir > 0 ? ">" : "<");
-}
-
-static void flx4_search_idle(void)
-{
-     unsigned long long t = shim_now_ms();
-     for (int i = 0; i < 2; i++)
-          if (search_state[i].dir != 0 &&
-              t - search_state[i].last_ms >= SEARCH_IDLE_MS)
-               search_release(i);
+     ux_search_turn(ch == CH_DECK2, d > 0 ? 1 : -1);
 }
 
 static void flx4_jog_idle(void)
@@ -1076,8 +970,7 @@ static void flx4_build(void)
      if (jog_ppr < 1) jog_ppr = 1;
      jog_rev = env_on("JOG_REV", 0);
      jog_idle_ms = env_num("JOG_IDLE_MS", 120);
-     return_hold_ms = env_num("RETURN_HOLD_MS", 2000);
-     return_request = env_text("RETURN_REQUEST", "/tmp/rblaunch.request");
+     ux_config();
      if (jog_idle_ms < 10) jog_idle_ms = 10;
      /* Where the HDMI mirror reaches unity in the MASTER LEVEL knob's travel --
      * env_dnum because it is a fraction, not a count (shimutil.h's reason for
@@ -1261,7 +1154,7 @@ static void flx4_build(void)
       * row to add_note() will get 0 px and no error. */
      add_note_repeat(CH_MIX, N_LOAD1_SHIFT, K_TRACKFILTER, CH_GLOBAL);
      add_note(CH_MIX, N_LOAD2_SHIFT, K_SHORTCUT, CH_GLOBAL);
-     /* SMART CFX is handled ahead of the table (flx4_cfx_button()); its row stays
+     /* SMART CFX is handled ahead of the table (ux_cfx_button()); its row stays
       * so the note is known. SMART FADER, a rekordbox feature rbp has no
       * equivalent of, is SOURCE since 2026-10-22: SHIFT + browse push, which
       * carried it, became BACK (operator's ask). The Android MONO/STEREO switch
@@ -1270,7 +1163,7 @@ static void flx4_build(void)
       * me_set_stereo()). */
      add_note(CH_MIX, N_SMART_CFX, 0, CH_GLOBAL);
      add_note(CH_MIX, N_SMART_FADER, K_SOURCE, CH_GLOBAL);
-     /* SHIFT + SMART FADER is handled ahead of the table (flx4_return_tick()). */
+     /* SHIFT + SMART FADER is handled ahead of the table (ux_return_tick()). */
      add_note(CH_MIX, N_MONO_STEREO, 0, CH_GLOBAL);
      /* And the control this map deliberately does not route to rbp: MASTER LEVEL
       * (CC 8 + CC 40) is the unit's own output volume, which sits after the USB
@@ -1320,9 +1213,7 @@ static void flx4_startup(void)
       * channel), and pressing the selected type again turns it off -- so the
       * second press this used to send on channel 2 switched Filter straight back
       * off and left both CFX knobs dead (measured on the Pi 5 unit, 2026-10-22). */
-     cfx_press(K_FILTER);
-     cfx_pos = 0;
-     cfx_off = 0;
+     ux_cfx_start();
      send_rx_key_f(K_COLOR, OP_VALUE, 1, 512, 0.5f);
      send_rx_key_f(K_COLOR, OP_VALUE, 2, 512, 0.5f);
      klog("knobshim2: Sound Color FX initialized to Filter (one global selection)\n");
@@ -1354,8 +1245,8 @@ static void flx4_startup(void)
 static void flx4_tick(void)
 {
      flx4_jog_idle();
-     flx4_search_idle();
-     flx4_return_tick();
+     ux_search_idle();
+     ux_return_tick("flx4");
 }
 
 static void flx4_event(const struct snd_seq_event *ev)
@@ -1590,7 +1481,7 @@ static const struct led_notes flx4_leds = {
       * whether the FLX4, like the GRV6, blinks it by itself at 127. */
      .fx_panel_blinks = 1,
 
-     /* SMART CFX is this map's CFX on/off (flx4_cfx_button()), so its LED shows
+     /* SMART CFX is this map's CFX on/off (ux_cfx_button()), so its LED shows
       * whether rbp has a Sound Color FX on. Note 0 on ch 6 is the button's own
       * input note, the rule every measured LED on this panel follows. EXPECTED,
       * to be confirmed on the panel. */

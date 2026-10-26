@@ -81,6 +81,7 @@
 #include "rbp_bridge.h"
 #include "rbp_vu.h"         /* g_fader / g_fader_seen: the meter scaling input */
 #include "ctrl_map.h"
+#include "map_ux.h"         /* browse, CFX, search, return, roll, brake: shared with the FLX4 */
 
 /* ---- receive channels (0-based, as aseqdump prints them) ----------------- */
 #define CH_DECK1  0   /* deck 1: buttons, jog, tempo, its mixer strip */
@@ -102,13 +103,29 @@
 #define N_IN          16
 #define N_OUT         17
 #define N_4BEAT       77  /* 4 BEAT / EXIT -> rbp's RELOOP/EXIT */
-#define N_CALL_PREV   81  /* CUE/LOOP CALL < -- rbp keycode unidentified */
-#define N_CALL_NEXT   83  /* CUE/LOOP CALL > -- ditto */
+#define N_CALL_PREV   81  /* CUE/LOOP CALL < -> rbp CALL < (K_CALLPREV) */
+#define N_CALL_NEXT   83  /* CUE/LOOP CALL > -> rbp CALL > (K_CALLNEXT) */
 #define N_SYNC        88  /* BEAT SYNC; short and long press alike */
 #define N_CH_CUE      84  /* channel CUE -> rbp's mixer engine, latching */
 #define N_KEY_SYNC    101 /* KEY SYNC -- rbp has no such keycode */
 #define N_MASTER_TEMPO 26 /* MASTER TEMPO -> rbp's K_MT (key lock) */
-#define N_MEMORY      61  /* MEMORY -- rbp keycode unidentified */
+#define N_MEMORY      61  /* MEMORY -> rbp's MEMORY (K_CUEMEMORY) */
+/* MEASURED 2026-10-23 (the full inventory, docs/port/grv6-midi.md): */
+#define N_SLIP        64  /* SLIP -> rbp SLIP, LED on the same note */
+#define N_SLIP_SHIFT  23  /* SHIFT + SLIP (printed VINYL) -> rbp VINYL */
+#define N_QUANTIZE    53  /* QUANTIZE -> rbp QUANTIZE */
+#define N_QUANTIZE_SHIFT 104 /* SHIFT + QUANTIZE (TAP tempo): no rbp equivalent */
+#define N_MT_SHIFT    96  /* SHIFT + MASTER TEMPO (tempo range) -> rbp TEMPO RANGE */
+#define N_SYNC_SHIFT  92  /* SHIFT + BEAT SYNC (set master) -> rbp MASTER */
+#define N_MEMORY_SHIFT 62 /* SHIFT + MEMORY (DELETE): rbp's delete is a long press, unbound */
+#define N_JOG_TOUCH_SHIFT 103 /* SHIFT + platter touch: the search hold, not a jog touch */
+/* Groove Circuit (deck channel): no drum stems on the RX3 (owner's choice, 2026-10-23):
+ * DRUM ROLL 1-4 = a slip roll of 1/8, 1/4, 1/2, 1 beat while held (rbp's SLIP BEAT
+ * LOOP pads 2-5), the DRUM RELEASE lever = VINYL BRAKE while tilted. DRUM SWAP
+ * 1-4 (0-3), CAPTURE (8), GAIN (CC 18) and the SHIFT layer are unbound. */
+#define N_DRUM_ROLL1  4
+#define N_DRUM_ROLL4  7
+#define N_DRUM_RELEASE 36 /* the lever: On while tilted, ON and LOCK alike */
 #define N_DECK_SEL    114 /* DECK button, on the TARGET deck's channel */
 #define N_LAYER       60  /* layer-active state: On = this channel's layer is live */
 
@@ -144,7 +161,16 @@
 /* ---- mixer / browse (ch 6) ------------------------------------------------ */
 #define N_MASTER_CUE   99
 #define N_BROWSE_PUSH  65
-#define N_BROWSE_PUSH_SHIFT 66  /* -> rbp's SOURCE screen, as on the FLX4 */
+#define N_BROWSE_PUSH_SHIFT 66  /* -> out of the browser, as on the FLX4 (map_ux.c) */
+#define N_CFX_ONOFF    0    /* SOUND COLOR FX ON/OFF: the FLX4's SMART CFX note */
+#define N_CFX_ONOFF_SHIFT 8 /* ditto + SHIFT: next CFX type */
+#define N_BACK_SHIFT   102  /* SHIFT + BACK, held RETURN_HOLD_MS -> the boot menu */
+#define N_VIEW_SHIFT   103  /* SHIFT + VIEW (add to Tag List) -> rbp TAG LIST */
+#define N_TILT_UP_SHIFT   57  /* SHIFT + tilt: UP/DOWN jump TILT_PAGE rows, */
+#define N_TILT_DOWN_SHIFT 59
+#define N_TILT_LEFT_SHIFT 61  /* LEFT/RIGHT as unshifted */
+#define N_TILT_RIGHT_SHIFT 63
+#define TILT_PAGE      10
 #define N_TILT_UP      56
 #define N_TILT_DOWN    58
 #define N_TILT_LEFT    60
@@ -170,6 +196,7 @@
 #define N_FX_BEATPREV  74
 #define N_FX_BEATNEXT  75
 #define N_FX_ONOFF     71
+#define N_FX_BEATNEXT_SHIFT 107 /* SHIFT + BEAT > (TAP) -> rbp Beat FX TAP */
 
 /* ---- CCs (14-bit pairs: MSB on n, LSB on n+32; only the MSB is bound except
  * where a handler combines both) -------------------------------------------- */
@@ -186,7 +213,7 @@
 #define CC_FADER       19
 #define CC_XFADER      31
 #define CC_CFX1        23   /* Sound Color FX knob, CH1 (measured) */
-#define CC_CFX2        24   /* ditto CH2 -- TODO: unverified (the FLX4's number) */
+#define CC_CFX2        24   /* ditto CH2: MEASURED 2026-10-23 (CH3/CH4: 25/26, unbound) */
 #define CC_HP_MIX      12
 #define CC_HP_LEVEL    13
 #define CC_MASTER_MSB  8
@@ -194,7 +221,7 @@
 #define CC_BOOTH_MSB   9    /* BOOTH LEVEL: hardware-only, deliberately unbound (D20) */
 #define CC_FX_DEPTH    2
 #define CC_BROWSE      64   /* relative, 0x01 = clockwise / 0x7F = counter-clockwise */
-#define CC_BROWSE_SHIFT 100 /* the FLX4's SHIFT + browse turn; not seen on the GRV6 */
+#define CC_BROWSE_SHIFT 100 /* SHIFT + browse turn: MEASURED 2026-10-23, the FLX4's */
 
 /* The HDMI mirror's unity point in the MASTER LEVEL knob's travel; the FLX4's
  * law and default, see map_flx4.c's flx4_mastervol_gain(). */
@@ -224,6 +251,14 @@ static int jog_ppr = GRV6_JOG_PPR;
 static int jog_rev = 0;
 static int jog_idle_ms = 120;
 static int jog_window_ms = JOG_WINDOW_MS_DEFAULT;
+/* rbp's jog speed is a PLAYBACK RATE (1.0 = the track's own speed), not
+ * revolutions per second. A record at 33 1/3 rpm turns 0.556 rev/s at 1.0, so
+ * a platter that should feel like one needs its rev/s x 60/33.33 = 1.8. Measured
+ * 2026-10-23 with the jog-centre indicator (which turns at 33 1/3 from the
+ * playhead): without it the platter took ~1.75 turns per turn of the record.
+ * JOG_SPEED_PCT, percent; 180 = vinyl at 33 1/3, 100 = the old rev/s. */
+#define JOG_SPEED_PCT_DEFAULT 180
+static int jog_speed_pct = JOG_SPEED_PCT_DEFAULT;
 static int jog_verbose = 0;
 static int tempo_verbose = 0;
 static int tempo_rev = 0;
@@ -253,6 +288,15 @@ static const int fx_knob_pos[N_FX_KNOB_LAST - N_FX_KNOB_FIRST + 1] = {
      11,   /* 44 MOBIUS (saw)     -> SLIP ROLL   (no MOBIUS in rbp)    */
      13,   /* 45 MOBIUS (tri)     -> VINYL BRAKE (no MOBIUS in rbp)    */
 };
+
+/* The Beat FX target this map last sent (0 deck 1, 1 deck 2, BFX_CH_MASTER), so
+ * the DRUM RELEASE lever's momentary VINYL BRAKE can put it back; -1 = none sent
+ * yet. */
+static int fx_ch_last = -1;
+/* The Beat FX effect position this map last sent from the knob (the knob is
+ * absolute, so this is where it physically sits once it has moved); -1 = not
+ * moved yet. The lever puts it back after VINYL BRAKE. */
+static int fx_pos_last = -1;
 
 /* ---- the jog -------------------------------------------------------------- */
 struct jog_ctrl {
@@ -326,6 +370,43 @@ static void grv6_note(int ch, int note, int on)
           if (verbose)
                klog("knobshim2: deck %d layer ch%d note%d on=%d: ignored "
                     "(rbp has two players)\n", ch + 1, ch, note, on);
+          return;
+     }
+
+     /* The behaviours shared with the FLX4 map (map_ux.c), ahead of the table. */
+     if (ch == CH_MIX && note == N_BACK_SHIFT) {
+          ux_return_edge(on);
+          return;
+     }
+     if (ch == CH_MIX && note == N_BROWSE_PUSH_SHIFT) {
+          if (on)
+               ux_browse_exit();
+          return;
+     }
+     if (ch == CH_MIX && (note == N_CFX_ONOFF || note == N_CFX_ONOFF_SHIFT)) {
+          if (on)
+               ux_cfx_button(note == N_CFX_ONOFF_SHIFT);
+          return;
+     }
+     /* SHIFT + tilt UP / DOWN: TILT_PAGE rows at once (the manual's "top /
+      * bottom of the list"; rbp has no such key, so a page of selector steps). */
+     if (ch == CH_MIX && (note == N_TILT_UP_SHIFT || note == N_TILT_DOWN_SHIFT)) {
+          if (on) {
+               int d = (note == N_TILT_UP_SHIFT) ? -1 : 1;
+               for (int i = 0; i < TILT_PAGE; i++)
+                    send_rx_key(K_SELECTOR, OP_ROTATE, CH_GLOBAL, d);
+          }
+          return;
+     }
+     /* Groove Circuit: DRUM ROLL 1-4 -> a slip roll on rbp's SLIP BEAT LOOP pads
+      * 2-5 (1/8, 1/4, 1/2, 1 beat), the lever -> VINYL BRAKE while tilted. */
+     if ((ch == CH_DECK1 || ch == CH_DECK2) &&
+         note >= N_DRUM_ROLL1 && note <= N_DRUM_ROLL4) {
+          ux_slip_roll(ch, note - N_DRUM_ROLL1 + 2, on);
+          return;
+     }
+     if ((ch == CH_DECK1 || ch == CH_DECK2) && note == N_DRUM_RELEASE) {
+          ux_bfx_momentary(ch, UX_BFX_POS_VINYL_BRAKE, fx_ch_last, fx_pos_last, on);
           return;
      }
 
@@ -408,6 +489,7 @@ static void grv6_note(int ch, int note, int on)
                return;
           }
           send_rx_key(K_BFXCH, OP_VALUE, CH_GLOBAL, want);
+          fx_ch_last = want;
           klog("knobshim2: FX CH -> Beat FX target %s\n",
                want == BFX_CH_MASTER ? "MASTER (5)" :
                (want == 0 ? "deck 1 (0)" : "deck 2 (1)"));
@@ -420,6 +502,7 @@ static void grv6_note(int ch, int note, int on)
           if (on) {
                int pos = fx_knob_pos[note - N_FX_KNOB_FIRST];
                send_rx_key(K_BFXTYPE, OP_VALUE, CH_GLOBAL, pos);
+               fx_pos_last = pos;
                klog("knobshim2: Beat FX knob note %d -> type position %d\n",
                     note, pos);
           }
@@ -538,18 +621,23 @@ static void grv6_cc_abs(int ch, int cc, int val)
 
 /* BROWSE: two's-complement delta, 0x01 clockwise / 0x7F counter-clockwise --
  * measured (3 clicks each way: 1,1,1,127,127,127). */
-static void grv6_browse(int val)
+static void grv6_browse(int cc, int val)
 {
      if (val < 0 || val > 127)
           return;
      int delta = (val >= 64) ? (val - 128) : val;
-     if (delta == 0)
+     ux_browse_turn(cc == CC_BROWSE_SHIFT, delta * knob_scale);
+}
+
+/* SHIFT + platter (CC 41) -> SEARCH, the FLX4's gesture (map_ux.c). */
+static void grv6_jog_search(int ch, int val)
+{
+     int d = val - 0x40;
+     if (d == 0)
           return;
-     long n = (long)delta * (long)knob_scale;
-     send_rx_key(K_SELECTOR, OP_ROTATE, CH_GLOBAL, n < 0 ? -1 : 1);
-     if (verbose)
-          klog("knobshim2: browse knob v=%d delta=%ld -> 0x%04x rotate\n",
-               val, n, K_SELECTOR);
+     if (jog_rev)
+          d = -d;
+     ux_search_turn(ch == CH_DECK2, d > 0 ? 1 : -1);
 }
 
 /* The jog. rbp's contract is map_flx4.c's: key 0x4305, OP_ROTATE, f = rev/s,
@@ -605,7 +693,8 @@ static void grv6_jog(int ch, int val)
      if (el == 0 || el < (unsigned long long)jog_window_ms * 1000ULL)
           return;
      float dt = (float)el / 1000000.0f;
-     float speed = (float)s->pending / (float)(jog_ppr * jog_scale) / dt;
+     float speed = (float)s->pending / (float)(jog_ppr * jog_scale) / dt
+                   * (float)jog_speed_pct / 100.0f;
      if (speed > 8.0f) speed = 8.0f;
      if (speed < -8.0f) speed = -8.0f;
      s->pending = 0;
@@ -713,6 +802,7 @@ static void grv6_mastervol(int cc, int val)
 static void grv6_build(void)
 {
      /* ADDITIVE, like every build(): see ctrl_bindings_reset() in ctrl_map.h. */
+     ux_config();
      knob_scale = env_num("KNOB_SCALE", 1);
      if (knob_scale < 1) knob_scale = 1;
      jog_scale = env_num("JOG_SCALE", 1);
@@ -723,6 +813,8 @@ static void grv6_build(void)
      jog_idle_ms = env_num("JOG_IDLE_MS", 120);
      if (jog_idle_ms < 10) jog_idle_ms = 10;
      jog_window_ms = env_num("JOG_WINDOW_MS", JOG_WINDOW_MS_DEFAULT);
+     jog_speed_pct = env_num("JOG_SPEED_PCT", JOG_SPEED_PCT_DEFAULT);
+     if (jog_speed_pct < 10) jog_speed_pct = JOG_SPEED_PCT_DEFAULT;
      if (jog_window_ms < 0) jog_window_ms = 0;
      if (jog_window_ms > 50) jog_window_ms = 50;   /* more is latency, not accuracy */
      mastervol_mid = env_dnum("MIRROR_GAIN_MID", MIRROR_GAIN_MID_DEFAULT);
@@ -760,9 +852,20 @@ static void grv6_build(void)
            * CALL < is left for its real keycode). KEY SYNC: rbp has none. The
            * DECK button and the layer state: D6. */
           add_note(rch, N_SHIFT, 0, sch);
-          add_note(rch, N_CALL_PREV, 0, sch);
-          add_note(rch, N_CALL_NEXT, 0, sch);
-          add_note(rch, N_MEMORY, 0, sch);
+          add_note(rch, N_CALL_PREV, K_CALLPREV, sch);
+          add_note(rch, N_CALL_NEXT, K_CALLNEXT, sch);
+          add_note(rch, N_MEMORY, K_CUEMEMORY, sch);
+          add_note(rch, N_MEMORY_SHIFT, 0, sch);
+          add_note(rch, N_SLIP, K_SLIP, sch);
+          add_note(rch, N_SLIP_SHIFT, K_VINYL, sch);
+          add_note(rch, N_QUANTIZE, K_QUANTIZE, sch);
+          add_note(rch, N_QUANTIZE_SHIFT, 0, sch);
+          add_note(rch, N_MT_SHIFT, K_TEMPO_RANGE, sch);
+          add_note(rch, N_SYNC_SHIFT, K_MASTER, sch);
+          add_note(rch, N_JOG_TOUCH_SHIFT, 0, sch);
+          for (int n = 0; n <= 3; n++)               /* DRUM SWAP 1-4: unbound */
+               add_note(rch, n, 0, sch);
+          add_note(rch, 8, 0, sch);                  /* CAPTURE: unbound */
           add_note(rch, N_KEY_SYNC, 0, sch);
           add_note(rch, N_DECK_SEL, 0, sch);
           add_note(rch, N_LAYER, 0, sch);
@@ -798,7 +901,7 @@ static void grv6_build(void)
      add_abs(CH_MIX, CC_HP_MIX, K_HPMIX, CH_GLOBAL);
      add_abs(CH_MIX, CC_HP_LEVEL, K_HPLEVEL, CH_GLOBAL);
      add_note(CH_MIX, N_BROWSE_PUSH, K_SELECTOR, CH_GLOBAL);
-     add_note(CH_MIX, N_BROWSE_PUSH_SHIFT, K_SOURCE, CH_GLOBAL);
+     /* SHIFT + browse push and the CFX button are handled ahead of the table. */
      add_note(CH_MIX, N_LOAD1, K_LOAD, 1);
      add_note(CH_MIX, N_LOAD2, K_LOAD, 2);
      /* SHIFT + LOAD: the FLX4's two actions, on the GRV6's notes. TRACK FILTER
@@ -811,6 +914,9 @@ static void grv6_build(void)
      add_note(CH_MIX, N_BACK, K_BACK, CH_GLOBAL);
      add_note(CH_MIX, N_TILT_LEFT, K_BACK, CH_GLOBAL);
      add_note(CH_MIX, N_TILT_RIGHT, K_SELECTOR, CH_GLOBAL);
+     add_note(CH_MIX, N_TILT_LEFT_SHIFT, K_BACK, CH_GLOBAL);
+     add_note(CH_MIX, N_TILT_RIGHT_SHIFT, K_SELECTOR, CH_GLOBAL);
+     add_note(CH_MIX, N_VIEW_SHIFT, K_TAGLIST, CH_GLOBAL);
      /* VIEW and DISCOVER (D25, the owner's choice after the first run on the
       * unit): BACK only climbs to the top of the list and never leaves the
       * browser, and rbp's own BROWSE key (the keyboard map's `6`, tried there)
@@ -826,6 +932,7 @@ static void grv6_build(void)
 
      /* ---- Beat FX (ch 4) ---- */
      add_note(CH_FX, N_FX_ONOFF, K_BFX, CH_GLOBAL);
+     add_note(CH_FX, N_FX_BEATNEXT_SHIFT, K_TAP, CH_GLOBAL);
      add_abs(CH_FX, CC_FX_DEPTH, K_DEPTH, CH_GLOBAL);
 }
 
@@ -841,13 +948,13 @@ static void grv6_startup(void)
      *(volatile uint32_t *)ADDR_MIXER_ROUTE_PLAYER1 = MIXER_ROUTE_INPUT1;
      klog("knobshim2: routed Mixer Ch1 -> Deck1, Ch2 -> Deck2\n");
 
-     send_rx_key(K_FILTER, OP_PRESS, 1, 0);
-     send_rx_key(K_FILTER, OP_RELEASE, 1, 0);
-     send_rx_key(K_FILTER, OP_PRESS, 2, 0);
-     send_rx_key(K_FILTER, OP_RELEASE, 2, 0);
+     /* ONE Filter press: rbp's CFX type is global, and a second press (one per
+      * channel, as this used to do) is "the same type again" and switched it
+      * straight back off -- the FLX4's 2026-10-22 bug, here too. */
+     ux_cfx_start();
      send_rx_key_f(K_COLOR, OP_VALUE, 1, 512, 0.5f);
      send_rx_key_f(K_COLOR, OP_VALUE, 2, 512, 0.5f);
-     klog("knobshim2: Sound Color FX initialized to Filter on Ch1 & Ch2\n");
+     klog("knobshim2: Sound Color FX initialized to Filter (one press, global)\n");
 
      send_rx_key_f(K_MASTERLVL, OP_VALUE, CH_GLOBAL, 1023, 1.0f);
      klog("knobshim2: master level set to unity\n");
@@ -929,6 +1036,8 @@ static void grv6_hp_hold(void)
 static void grv6_tick(void)
 {
      grv6_jog_idle();
+     ux_search_idle();
+     ux_return_tick("grv6");
      grv6_master_cue_hold();
      grv6_hp_hold();
 }
@@ -949,10 +1058,12 @@ static void grv6_event(const struct snd_seq_event *ev)
                grv6_pitch(ch, cc, val);
           else if ((ch == CH_DECK1 || ch == CH_DECK2) &&
                    (cc == CC_JOG_WHEEL || cc == CC_JOG_VINYL ||
-                    cc == CC_JOG_NOVINYL || cc == CC_JOG_SHIFT))
+                    cc == CC_JOG_NOVINYL))
                grv6_jog(ch, val);
+          else if ((ch == CH_DECK1 || ch == CH_DECK2) && cc == CC_JOG_SHIFT)
+               grv6_jog_search(ch, val);
           else if (ch == CH_MIX && (cc == CC_BROWSE || cc == CC_BROWSE_SHIFT))
-               grv6_browse(val);
+               grv6_browse(cc, val);
           else if (ch == CH_MIX && (cc == CC_MASTER_MSB || cc == CC_MASTER_LSB))
                grv6_mastervol(cc, val);
           else
@@ -1012,7 +1123,7 @@ static const struct led_notes grv6_leds = {
      .n_keylock = -1,          /* MASTER TEMPO is lit by the GRV6 itself; 26/0
                                 * from the host lit nothing */
      .n_vinyl = -1,            /* no such button */
-     .n_slip = -1,             /* no such button */
+     .n_slip = 64,             /* MEASURED 2026-10-23: SLIP's own note lit it */
      .n_loopin = 16,           /* MEASURED: orange */
      .n_loopout = 17,          /* MEASURED: orange */
      .n_autoloop = -1,         /* MEASURED: 77/0 lit nothing; no light */
@@ -1057,6 +1168,11 @@ static const struct led_notes grv6_leds = {
      .n_meter_master_l = -1,
      .n_meter_master_r = -1,
 
+     .cfx_any_ch1 = 6 + 1,     /* MEASURED 2026-10-23: 0/6 lit SOUND COLOR FX ON/OFF */
+     .n_quantize1 = 53 + 1,    /* MEASURED 2026-10-23: QUANTIZE's own note lit it */
+     .jog_ch1 = 15 + 1,        /* MEASURED 2026-10-23: ch 15 CC 0..3 = the four jog */
+     .jog_cc = 0,              /* indicators, the value an angle (~5 deg each from 1, 0 dark) */
+     .n_cfx_any = 0,
      .fx_panel_blinks = 1,     /* MEASURED (C-045): FX ON/OFF at velocity 0/1 is
                                 * solid, at 127 the GRV6 blinks it itself (and
                                 * with nothing sent it blinks too). rbp: FX off =

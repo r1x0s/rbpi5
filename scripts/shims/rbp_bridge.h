@@ -53,6 +53,10 @@ int me_channel_input(void *engine, int idx);
 int me_channel_count(void);
 void me_set_cue(int idx, int on);
 int me_get_cue(int idx);
+/* The Sound Color FX type of mixer channel idx (0/1): 0 OFF, 1 FILTER, 2 NOISE,
+ * 3 SWEEP, 4 DUBECHO, 5 SPACE, 6 CRUSH; -1 before the engine exists. Per
+ * channel: rbp's type keys act on the channel they are sent to. */
+int me_get_cfx_type(int idx);
 void me_set_stereo(int type);
 void me_set_master_cue(int on);
 int me_get_master_cue(void);

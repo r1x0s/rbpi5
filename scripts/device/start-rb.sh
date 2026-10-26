@@ -299,6 +299,22 @@ rm -f /tmp/displaywatch.geom
 # own rule -- `RB_VNC_LIVE_FILE` in rb.conf becomes `VNC_LIVE_FILE` in the shim's
 # environment -- and an empty or unset one is not a problem: env_str() falls back to
 # the /run/rblive4 default, so the panel writes where the viewer reads either way.
+# RB_MIDI_MAP=auto: the map of whichever controller is plugged in, so one Pi
+# serves the FLX4 and the GRV6 without editing rb.local.conf (the launcher
+# starts rbp fresh each time, so a swap between sets is picked up there).
+# controllers_cli detect reads the USB bus against the controller table; the
+# first row found wins, and none found falls back to the table's default row
+# exactly as an empty value does.
+if [ "${RB_MIDI_MAP:-}" = auto ]; then
+    _det=$("$HERE/controllers_cli" detect 2>/dev/null | awk 'NR == 1 { print $1 }')
+    case "$_det" in
+        ""|none) RB_MIDI_MAP=""
+                 echo "start-rb: MIDI_MAP=auto: no controller on USB, the table's default" ;;
+        *)       RB_MIDI_MAP=$_det
+                 echo "start-rb: MIDI_MAP=auto: found $_det" ;;
+    esac
+fi
+
 SHIM_VARS="
 DFB_PRESENT DFB_ROTATE PAN_PACER_MS FB_DEV FB_LIE_BPP
 DFB_PRESENT_AUTO DFB_PRESENT_FIT DFB_PRESENT_SKIP DFB_PRESENT_PX_BUDGET
@@ -316,7 +332,7 @@ STARTUP_MUTE_MS STARTUP_FADE_MS SCHED_RT
 MIDI_MAP EVDEV_MAP MIDI_IN_MATCH MIDI_OUT_MATCH MIDI_DUMP MIDI_REPLAY
 MIDI_REPLAY_SPEED KEY_DUMP KEY_REPLAY KEY_REPLAY_SPEED
 KBD_DEV CTRL_KEEPALIVE
-LED_VU LED_VU_SEGMENTS LED_PADS LED_DISABLE PAD_BRIGHT JOG_PPR
+LED_VU LED_VU_SEGMENTS LED_PADS LED_DISABLE PAD_BRIGHT JOG_PPR JOG_LED_STEPS JOG_SPEED_PCT
 JOG_SCALE JOG_REV JOG_IDLE_MS JOG_WINDOW_MS KNOB_SCALE TEMPO_REV MIRROR_GAIN_MID
 SIDE_NUDGE_PCT
 MASTER_CUE_HW

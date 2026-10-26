@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <sound/asequencer.h>
 
@@ -35,6 +36,7 @@
 #include "shmstate.h"
 #include "rbp_vu.h"
 #include "ctrl_map.h"
+#include "map_ux.h"
 #include "mididump.h"
 
 #ifndef GRV6_FIXTURE
@@ -87,8 +89,25 @@ static void record(int kind, int key, int op, int ch, long param, float fval,
      sent_n++;
 }
 
+
+/* rbp's per-channel Sound Color FX type (rbp_abi.h ME_GET_CFX_TYPE), simulated
+ * from the type keys the map sends: a type key on channel 1/2 selects that type
+ * there, or switches it off if it is the one selected -- rbp's own rule. */
+static int sim_cfx[2];
+int me_get_cfx_type(int idx)         { return (idx == 0 || idx == 1) ? sim_cfx[idx] : -1; }
+static void sim_cfx_key(int key, int op, int ch)
+{
+     static const int keys[7] = { 0, K_FILTER, K_NOISE, K_SWEEP, K_DUBECHO, K_SPACE, K_CRUSH };
+     if (op != OP_PRESS || ch < 1 || ch > 2)
+          return;
+     for (int t = 1; t <= 6; t++)
+          if (key == keys[t])
+               sim_cfx[ch - 1] = (sim_cfx[ch - 1] == t) ? 0 : t;
+}
+
 void send_rx_key(int keycode, int op, int ch, long param)
 {
+     sim_cfx_key(keycode, op, ch);
      record(0, keycode, op, ch, param, 0.0f, 0);
 }
 
@@ -114,6 +133,19 @@ int cc_to_10bit(int v)
      if (v < 0) v = 0;
      if (v > 127) v = 127;
      return (v << 3) | (v >> 4);
+}
+
+/* ---- rbp state map_ux.c reads (settable, so the checks can move it) ------- */
+static int browse_mode = 3;          /* not the performance screen (1) */
+int rbp_browse_mode(void)            { return browse_mode; }
+int rbp_beatfx_type(void)            { return 7; }   /* PHASER: position 7 */
+static int pad_mode[2];              /* 0 HOT CUE .. 3 BEAT JUMP */
+int rbp_padmode(int deck)            { return pad_mode[deck ? 1 : 0]; }
+static int bfx_led = 1;              /* LedStat 48: 2 = Beat FX on */
+int rbp_ledstat_state(unsigned int id, unsigned int ch)
+{
+     (void)ch;
+     return id == 48 ? bfx_led : -1;
 }
 
 /* ---- the mixer engine ----------------------------------------------------- */
@@ -175,7 +207,10 @@ static const struct expect expect[] = {
      PR(K_SYNC, 1),                  /* one gesture; the release is swallowed */
      /* SHIFT, SHIFT + PLAY: nothing */
      PR(K_MT, 1),                    /* MASTER TEMPO -> key lock */
-     /* KEY SYNC, MEMORY, CALL < and >: nothing */
+     /* KEY SYNC: nothing. MEMORY, CALL < and > (2026-10-23): rbp's own */
+     PR(K_CUEMEMORY, 1),
+     PR(K_CALLPREV, 1),
+     PR(K_CALLNEXT, 1),
      PR(K_LOOPIN, 1),
      PR(K_LOOPOUT, 1),
      PR(K_RELOOP, 1),
@@ -201,7 +236,7 @@ static const struct expect expect[] = {
      { 0, K_SELECTOR, OP_ROTATE, CH_GLOBAL, 1,  0.0f, 0 },
      { 0, K_SELECTOR, OP_ROTATE, CH_GLOBAL, -1, 0.0f, 0 },
      PR(K_SELECTOR, CH_GLOBAL),      /* push */
-     PR(K_SOURCE, CH_GLOBAL),        /* SHIFT + push */
+     PR(K_BROWSE, CH_GLOBAL),        /* SHIFT + push: out of the browser (map_ux.c) */
      { 0, K_SELECTOR, OP_ROTATE, CH_GLOBAL, 1,  0.0f, 0 },   /* tilt DOWN */
      { 0, K_SELECTOR, OP_ROTATE, CH_GLOBAL, -1, 0.0f, 0 },   /* tilt UP */
      PR(K_BACK, CH_GLOBAL),          /* tilt LEFT */
@@ -646,10 +681,19 @@ static void check_leds(void)
      CHECK(l->n_loopin == 16 && l->n_loopout == 17,
            "LOOP IN/OUT LEDs are 16/17 (measured), not %d/%d",
            l->n_loopin, l->n_loopout);
-     CHECK(l->n_keylock == -1 && l->n_autoloop == -1 &&
-           l->n_vinyl == -1 && l->n_slip == -1,
-           "keylock/autoloop/vinyl/slip have no host LED (%d/%d/%d/%d)",
-           l->n_keylock, l->n_autoloop, l->n_vinyl, l->n_slip);
+     CHECK(l->n_keylock == -1 && l->n_autoloop == -1 && l->n_vinyl == -1,
+           "keylock/autoloop/vinyl have no host LED (%d/%d/%d)",
+           l->n_keylock, l->n_autoloop, l->n_vinyl);
+     CHECK(l->n_slip == 64, "SLIP's LED is its own note 64 (measured), not %d",
+           l->n_slip);
+     CHECK(l->n_quantize1 == 54, "QUANTIZE's LED is its own note 53 (measured), not %d",
+           l->n_quantize1 - 1);
+     CHECK(l->jog_ch1 == 16 && l->jog_cc == 0,
+           "the jog indicators are ch 15 CC 0.. (measured), not ch %d CC %d",
+           l->jog_ch1 - 1, l->jog_cc);
+     CHECK(l->cfx_any_ch1 == 7 && l->n_cfx_any == 0,
+           "the CFX ON/OFF LED is ch 6 note 0 (measured), not ch1=%d note %d",
+           l->cfx_any_ch1, l->n_cfx_any);
      for (int m = 0; m < 4; m++)
           CHECK(l->n_mode[m] == -1,
                 "pad mode %d: the GRV6 lights its own mode buttons, not %d",
@@ -704,6 +748,213 @@ static void check_leds(void)
           check_self_lit("an FX LED", l->fx_ch, l->n_fx[g]);
 }
 
+/* The 2026-10-23 additions, driven event by event: the rows the inventory
+ * bound, and map_ux.c's behaviours as the GRV6 reaches them. */
+static void note_ev(int ch, int note, int on)
+{
+     struct snd_seq_event ev;
+     memset(&ev, 0, sizeof ev);
+     ev.type = on ? SNDRV_SEQ_EVENT_NOTEON : SNDRV_SEQ_EVENT_NOTEOFF;
+     ev.data.note.channel = ch;
+     ev.data.note.note = note;
+     ev.data.note.velocity = on ? 127 : 0;
+     dispatch(&ev);
+}
+
+static void cc_ev(int ch, int cc, int val)
+{
+     struct snd_seq_event ev;
+     memset(&ev, 0, sizeof ev);
+     ev.type = SNDRV_SEQ_EVENT_CONTROLLER;
+     ev.data.control.channel = ch;
+     ev.data.control.param = cc;
+     ev.data.control.value = val;
+     dispatch(&ev);
+}
+
+static void press(int ch, int note) { note_ev(ch, note, 1); note_ev(ch, note, 0); }
+
+/* sent[from..] is exactly `n` of `want` (kind 0/2 key+op+ch+param). */
+static void expect_keys(const char *what, int from, const struct sent *want, int n)
+{
+     CHECK(sent_n - from == n, "%s: %d keycodes, expected %d", what, sent_n - from, n);
+     for (int i = 0; i < n && from + i < sent_n; i++) {
+          const struct sent *g = &sent[from + i];
+          CHECK(g->key == want[i].key && g->op == want[i].op &&
+                g->ch == want[i].ch && g->param == want[i].param,
+                "%s #%d: got 0x%04x op%d ch%d p%ld, expected 0x%04x op%d ch%d p%ld",
+                what, i, g->key, g->op, g->ch, g->param,
+                want[i].key, want[i].op, want[i].ch, want[i].param);
+     }
+}
+
+#define K(key, op, ch, p) { 0, (key), (op), (ch), (p), 0.0f, 0 }
+
+static void check_inventory_rows(void)
+{
+     int s0;
+
+     s0 = sent_n; press(0, 64);
+     { const struct sent w[] = { K(K_SLIP, OP_PRESS, 1, 0), K(K_SLIP, OP_RELEASE, 1, 0) };
+       expect_keys("SLIP", s0, w, 2); }
+     s0 = sent_n; press(1, 23);
+     { const struct sent w[] = { K(K_VINYL, OP_PRESS, 2, 0), K(K_VINYL, OP_RELEASE, 2, 0) };
+       expect_keys("SHIFT + SLIP (deck 2)", s0, w, 2); }
+     s0 = sent_n; press(0, 53);
+     { const struct sent w[] = { K(K_QUANTIZE, OP_PRESS, 1, 0), K(K_QUANTIZE, OP_RELEASE, 1, 0) };
+       expect_keys("QUANTIZE", s0, w, 2); }
+     s0 = sent_n; press(0, 96);
+     { const struct sent w[] = { K(K_TEMPO_RANGE, OP_PRESS, 1, 0), K(K_TEMPO_RANGE, OP_RELEASE, 1, 0) };
+       expect_keys("SHIFT + MASTER TEMPO", s0, w, 2); }
+     s0 = sent_n; press(0, 92);
+     { const struct sent w[] = { K(K_MASTER, OP_PRESS, 1, 0), K(K_MASTER, OP_RELEASE, 1, 0) };
+       expect_keys("SHIFT + BEAT SYNC", s0, w, 2); }
+     s0 = sent_n; press(6, 103);
+     { const struct sent w[] = { K(K_TAGLIST, OP_PRESS, CH_GLOBAL, 0), K(K_TAGLIST, OP_RELEASE, CH_GLOBAL, 0) };
+       expect_keys("SHIFT + VIEW", s0, w, 2); }
+     s0 = sent_n; press(4, 107);
+     { const struct sent w[] = { K(K_TAP, OP_PRESS, CH_GLOBAL, 0), K(K_TAP, OP_RELEASE, CH_GLOBAL, 0) };
+       expect_keys("SHIFT + BEAT >", s0, w, 2); }
+     /* Nothing at all: DRUM SWAP, CAPTURE, SHIFT + QUANTIZE, SHIFT + MEMORY. */
+     s0 = sent_n;
+     press(0, 0); press(0, 3); press(0, 8); press(0, 104); press(0, 62);
+     CHECK(sent_n == s0, "an unbound Groove/SHIFT control sent %d keycodes", sent_n - s0);
+
+     /* SHIFT + tilt DOWN: a page of selector steps; SHIFT + LEFT is BACK. */
+     s0 = sent_n; press(6, 59);
+     CHECK(sent_n - s0 == 10, "SHIFT + tilt DOWN sent %d keycodes, expected 10", sent_n - s0);
+     for (int i = s0; i < sent_n; i++)
+          CHECK(sent[i].key == K_SELECTOR && sent[i].op == OP_ROTATE && sent[i].param == 1,
+                "SHIFT + tilt DOWN step %d is not a selector +1", i - s0);
+     s0 = sent_n; press(6, 61);
+     { const struct sent w[] = { K(K_BACK, OP_PRESS, CH_GLOBAL, 0), K(K_BACK, OP_RELEASE, CH_GLOBAL, 0) };
+       expect_keys("SHIFT + tilt LEFT", s0, w, 2); }
+}
+
+static void check_ux(void)
+{
+     int s0;
+
+     /* CFX ON/OFF: both channels OFF -> Filter on each (rbp's type is per
+      * channel); SHIFT steps both to Space; ON/OFF again switches both off. */
+     sim_cfx[0] = sim_cfx[1] = 0;
+     s0 = sent_n; press(6, 0);
+     { const struct sent w[] = { K(K_FILTER, OP_PRESS, 1, 0), K(K_FILTER, OP_RELEASE, 1, 0),
+                                 K(K_FILTER, OP_PRESS, 2, 0), K(K_FILTER, OP_RELEASE, 2, 0) };
+       expect_keys("SOUND COLOR FX ON/OFF", s0, w, 4); }
+     s0 = sent_n; press(6, 8);
+     { const struct sent w[] = { K(K_SPACE, OP_PRESS, 1, 0), K(K_SPACE, OP_RELEASE, 1, 0),
+                                 K(K_SPACE, OP_PRESS, 2, 0), K(K_SPACE, OP_RELEASE, 2, 0) };
+       expect_keys("SHIFT + SOUND COLOR FX ON/OFF", s0, w, 4); }
+     /* One channel switched off on rbp's own screen: ON/OFF reads "on" (the
+      * other still is) and switches off only the channel that is on. */
+     sim_cfx[1] = 0;
+     s0 = sent_n; press(6, 0);
+     { const struct sent w[] = { K(K_SPACE, OP_PRESS, 1, 0), K(K_SPACE, OP_RELEASE, 1, 0) };
+       expect_keys("SOUND COLOR FX ON/OFF with one channel on", s0, w, 2); }
+     CHECK(sim_cfx[0] == 0 && sim_cfx[1] == 0, "CFX off left %d/%d", sim_cfx[0], sim_cfx[1]);
+
+     /* The browse knob on the performance screen opens the browser; SHIFT turns
+      * it are the selector; SHIFT + push there does nothing. */
+     browse_mode = 1;
+     s0 = sent_n; cc_ev(6, 64, 1);
+     { const struct sent w[] = { K(K_BROWSE, OP_PRESS, CH_GLOBAL, 0), K(K_BROWSE, OP_RELEASE, CH_GLOBAL, 0) };
+       expect_keys("browse turn on the performance screen", s0, w, 2); }
+     s0 = sent_n; cc_ev(6, 100, 127);
+     { const struct sent w[] = { K(K_SELECTOR, OP_ROTATE, CH_GLOBAL, -1) };
+       expect_keys("SHIFT + browse turn on the performance screen", s0, w, 1); }
+     s0 = sent_n; press(6, 66);
+     CHECK(sent_n == s0, "SHIFT + push on the performance screen sent %d keycodes", sent_n - s0);
+     browse_mode = 3;
+
+     /* SHIFT + platter: SEARCH held in the turn's direction, released when idle. */
+     s0 = sent_n; cc_ev(0, 41, 0x41); cc_ev(0, 41, 0x42);
+     { const struct sent w[] = { K(K_SRFWD, OP_PRESS, 1, 0) };
+       expect_keys("SHIFT + platter forward", s0, w, 1); }
+     usleep((UX_SEARCH_IDLE_MS + 30) * 1000);
+     s0 = sent_n; map_grv6.tick();
+     int found = 0;
+     for (int i = s0; i < sent_n; i++)
+          if (sent[i].key == K_SRFWD && sent[i].op == OP_RELEASE)
+               found = 1;
+     CHECK(found, "SEARCH > was not released after the platter stopped");
+
+     /* DRUM ROLL 2 (1/4 beat) from HOT CUE: SLIP mode, pad 3 held, HOT CUE back. */
+     pad_mode[0] = 0;
+     s0 = sent_n; note_ev(0, 5, 1);
+     { const struct sent w[] = { K(K_SLIPLOOP, OP_PRESS, 1, 0), K(K_SLIPLOOP, OP_RELEASE, 1, 0),
+                                 K(K_PAD1 + 2, OP_PRESS, 1, 0) };
+       expect_keys("DRUM ROLL 2 press", s0, w, 3); }
+     s0 = sent_n; note_ev(0, 5, 0);
+     { const struct sent w[] = { K(K_PAD1 + 2, OP_RELEASE, 1, 0),
+                                 K(K_HOTCUE, OP_PRESS, 1, 0), K(K_HOTCUE, OP_RELEASE, 1, 0) };
+       expect_keys("DRUM ROLL 2 release", s0, w, 3); }
+     /* Already in SLIP: no mode key either way (it would open the size bank). */
+     pad_mode[1] = 2;
+     s0 = sent_n; press(1, 4);
+     { const struct sent w[] = { K(K_PAD1 + 1, OP_PRESS, 2, 0), K(K_PAD1 + 1, OP_RELEASE, 2, 0) };
+       expect_keys("DRUM ROLL 1 in SLIP mode", s0, w, 2); }
+
+     /* The lever: VINYL BRAKE on deck 1 while tilted, then the knob's last
+      * position (DELAY, the fixture's last click) and last FX target (MST) put
+      * back -- the map's record, not rbp's getter (map_ux.c). */
+     bfx_led = 1;
+     s0 = sent_n; note_ev(0, 36, 1);
+     { const struct sent w[] = { K(K_BFXTYPE, OP_VALUE, CH_GLOBAL, 13), K(K_BFXCH, OP_VALUE, CH_GLOBAL, 0),
+                                 K(K_BFX, OP_PRESS, CH_GLOBAL, 0), K(K_BFX, OP_RELEASE, CH_GLOBAL, 0) };
+       expect_keys("DRUM RELEASE tilted", s0, w, 4); }
+     s0 = sent_n; note_ev(0, 36, 0);
+     { const struct sent w[] = { K(K_BFX, OP_PRESS, CH_GLOBAL, 0), K(K_BFX, OP_RELEASE, CH_GLOBAL, 0),
+                                 K(K_BFXTYPE, OP_VALUE, CH_GLOBAL, 0),   /* the knob's last: DELAY */
+                                 K(K_BFXCH, OP_VALUE, CH_GLOBAL, BFX_CH_MASTER) };
+       expect_keys("DRUM RELEASE back", s0, w, 4); }
+     /* Beat FX already on: the lever leaves it alone. */
+     bfx_led = 2;
+     s0 = sent_n; press(0, 36);
+     CHECK(sent_n == s0, "the lever took over a running Beat FX (%d keycodes)", sent_n - s0);
+     bfx_led = 1;
+}
+
+/* SHIFT + BACK held RETURN_HOLD_MS writes the launcher's request; a short one
+ * does not. */
+static void check_return(void)
+{
+     char path[] = "/tmp/test_grv6_return.XXXXXX";
+     int fd = mkstemp(path);
+     char buf[16] = { 0 };
+
+     CHECK(fd >= 0, "mkstemp failed");
+     if (fd < 0)
+          return;
+     close(fd);
+     unlink(path);
+     setenv("RETURN_HOLD_MS", "100", 1);
+     setenv("RETURN_REQUEST", path, 1);
+     ux_config();
+
+     note_ev(6, 102, 1);
+     usleep(30 * 1000);
+     map_grv6.tick();
+     note_ev(6, 102, 0);
+     CHECK(access(path, F_OK) != 0, "a short SHIFT + BACK wrote the return request");
+
+     note_ev(6, 102, 1);
+     usleep(130 * 1000);
+     map_grv6.tick();
+     note_ev(6, 102, 0);
+     fd = open(path, O_RDONLY);
+     CHECK(fd >= 0, "SHIFT + BACK held did not write %s", path);
+     if (fd >= 0) {
+          (void)!read(fd, buf, sizeof buf - 1);
+          close(fd);
+          CHECK(strcmp(buf, "grv6\n") == 0, "the request reads '%s', expected 'grv6'", buf);
+     }
+     unlink(path);
+     unsetenv("RETURN_HOLD_MS");
+     unsetenv("RETURN_REQUEST");
+     ux_config();
+}
+
 int main(void)
 {
      static const char *const names[] = {
@@ -720,10 +971,13 @@ int main(void)
      map_grv6.build();
 
      /* Decks: 22 notes each (6 transport + MASTER TEMPO + 8 pad modes + 7
-      * log-only) and 5 strip controls; pads: 4 bound bases x 8 per deck;
-      * mixer: 12 notes and 5 knobs; Beat FX: 1 note and 1 knob. */
-     CHECK(note_map_n == 121,
-           "the map built %d note rows, expected 121 (2 x (22 + 32) + 12 + 1)",
+      * CALL/MEMORY/log-only) + 13 from the 2026-10-23 inventory (SLIP, VINYL,
+      * QUANTIZE, TEMPO RANGE, MASTER, 4 log-only SHIFT layers, DRUM SWAP x4,
+      * CAPTURE) and 5 strip controls; pads: 4 bound bases x 8 per deck; mixer:
+      * 14 notes (12, less SHIFT + push now ahead of the table, plus SHIFT + tilt
+      * LEFT/RIGHT and SHIFT + VIEW) and 5 knobs; Beat FX: 2 notes and 1 knob. */
+     CHECK(note_map_n == 150,
+           "the map built %d note rows, expected 150 (2 x (35 + 32) + 14 + 2)",
            note_map_n);
      CHECK(abs_map_n == 16,
            "the map built %d absolute rows, expected 16 (2 x 5 + 5 + 1)",
@@ -744,6 +998,9 @@ int main(void)
           check_hp_hold(from);
      }
      check_jog();
+     check_inventory_rows();
+     check_ux();
+     check_return();
      check_master_cue_hw_off();
 
      printf("test_grv6: %d checks, %d failures\n", checks, failures);

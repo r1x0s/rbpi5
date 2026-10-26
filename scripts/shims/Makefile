@@ -243,14 +243,14 @@ rbp_key.o: rbp_key.c rbp_key.h rbp_abi.h syscalls.h
 # (annotated in the sources), and shmstate.o's globals, which the audio shim
 # reads out of the global scope. (rbp_key.o is the third object outside this
 # list; it is hidden too, and says why in its own rule above.)
-CTRL_OBJS  := ctrlshim.o ctrl_map.o map_flx4.o map_grv6.o map_jp21.o map_kbd.o evdev_io.o \
+CTRL_OBJS  := ctrlshim.o ctrl_map.o map_ux.o map_flx4.o map_grv6.o map_jp21.o map_kbd.o evdev_io.o \
               mididump.o rbp_bridge.o rbp_led.o led_table.o plinn_scan.o \
               rbp_vu.o midi_io.o controllers.o shimutil.o usb_label.o rbp_load.o \
               beatsync_guard.o
 CTRL_HDRS  := rbp_abi.h rbp_bridge.h rbp_key.h rbp_led.h led_table.h rbp_vu.h \
               midi_io.h shimutil.h ctrl_map.h mididump.h evdev_io.h syscalls.h \
               shmstate.h plinn_scan.h controllers.h usb_label.h pitch_state.h \
-              rbp_load.h beatsync_guard.h
+              rbp_load.h beatsync_guard.h map_ux.h
 knobshim.so: $(CTRL_OBJS) rbp_key.o shmstate.o fader_state.o rbp_transport.o \
              pitch_state.o keylog.o keylog_state.o $(CTRL_HDRS) rbp_transport.h \
              pitch_state.h keylog.h keylog_state.h \
@@ -984,7 +984,7 @@ test_midi.o: FORCE test_midi.c ctrl_map.h mididump.h shmstate.h rbp_abi.h \
 # of the SC Live 4's (channel, note) pairs, and that comparison needs both
 # tables. It costs one object and no new stubs -- the two maps' rbp calls are the
 # same set, already stubbed below.
-FLX4_TEST_OBJS := test_flx4.o map_flx4.o map_jp21.o ctrl_map.o mididump.o \
+FLX4_TEST_OBJS := test_flx4.o map_flx4.o map_ux.o map_jp21.o ctrl_map.o mididump.o \
                   shimutil.o shmstate.o pitch_state.o
 
 test_flx4: $(FLX4_TEST_OBJS) tests/midi_flx4.dump
@@ -1003,7 +1003,7 @@ test_flx4.o: FORCE test_flx4.c ctrl_map.h mididump.h shmstate.h rbp_abi.h \
 # the unit (docs/port/grv6-midi.md). It needs no map_jp21.o -- the GRV6 has no LED
 # table to compare -- and drives the jog with real sleeps, because the map
 # measures the jog's speed against the clock (about 0.5 s of the run).
-GRV6_TEST_OBJS := test_grv6.o map_grv6.o ctrl_map.o mididump.o shimutil.o \
+GRV6_TEST_OBJS := test_grv6.o map_grv6.o map_ux.o ctrl_map.o mididump.o shimutil.o \
                   shmstate.o
 
 test_grv6: $(GRV6_TEST_OBJS) tests/midi_grv6.dump

@@ -32,5 +32,14 @@ extern int led_sweep;
  * are in different modules. */
 extern int led_loop_armed[2];
 
+/* Readers of rbp's state for the maps (map_ux.c), from the same guarded reads
+ * the LED thread uses. rbp_ledstat_state(): rbp's LedStat state for (id, ch) --
+ * 0 off, 1 solid, 2 blink, 3 dim -- or -1 when rbp has no such entry (the
+ * snapshot is the LED thread's, refreshed every tick). rbp_padmode(): the deck's
+ * pad mode, 0 HOT CUE / 1 AUTO BEAT LOOP / 2 SLIP BEAT LOOP / 3 BEAT JUMP, 4 the
+ * size bank, -1 before rbp has built it. deck is 0 or 1. */
+int rbp_ledstat_state(unsigned int id, unsigned int ch);
+int rbp_padmode(int deck);
+
 #endif /* RBPI4B_RBP_LED_H */
 
