@@ -23,7 +23,7 @@ table and the risks, is [13 — Raspberry Pi 4](13-raspberrypi4.md).
 
 The three rows that say "unchanged" are the reason this port is a port and not
 a rewrite; they are also the expensive parts. See
-[Why it works](../README.md#why-it-works) in the top-level README.
+[Why it works](../README-rbpi4b.md#why-it-works) in the top-level README.
 
 ## 2. What changed
 

@@ -1,5 +1,10 @@
 # docs/
 
+> **Raspberry Pi 5 (this fork):** [pi5/hardware.md](pi5/hardware.md) ·
+> [pi5/mapping.md](pi5/mapping.md) · [pi5/assets.md](pi5/assets.md) ·
+> [pi5/publish.md](pi5/publish.md) (and `*.ru.md` in Russian). Build and deploy:
+> the top-level [README](../README.md).
+
 Documentation for the XDJ-RX3 `rb` → **Raspberry Pi 4B** port, with the previous
 Denon SC Live 4 target retained as the reference the port started from.
 

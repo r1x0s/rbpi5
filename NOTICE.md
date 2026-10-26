@@ -1,5 +1,25 @@
 # Notice, copyright and legal
 
+**English** · [Русский](NOTICE.ru.md)
+
+## This fork (Raspberry Pi 5)
+
+This fork adds a Raspberry Pi 5 port, a DDJ-GRV6 map and a build-and-deploy kit
+(`Makefile`, `pi5/`). Everything below about the upstream project applies to it
+unchanged: no firmware, decrypted images, rootfs, `rbp` or other vendor
+binaries, no decryption keys, and no firmware acquisition or decryption tooling
+are in this repository. The kit (`make assets`) only unpacks and patches files
+**you** supply from an already extracted XDJ-RX3 v1.20 tree.
+
+**You are solely responsible** for having the right to those files, for
+checking that extracting, patching and running the vendor's software on other
+hardware is lawful where you live and allowed by the vendor's EULA, and for any
+damage to your devices or data. By using this repository you accept that every
+action you take with it, and its consequences, are yours. The software is
+provided "as is", without warranty of any kind (see `LICENSE`).
+
+## Upstream (rbpi4b)
+
 **rbpi4b** is an independent interoperability/preservation project. It is
 **not affiliated with, endorsed by, or sponsored by** Pioneer DJ, AlphaTheta
 Corporation, Denon DJ, inMusic, Raspberry Pi Ltd, or any of their subsidiaries.

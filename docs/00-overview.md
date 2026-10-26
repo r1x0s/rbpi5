@@ -98,7 +98,7 @@ list: no control has yet been pressed and watched through to rbp. See
 
 ## Repository map
 
-See the top-level [README](../README.md). The device facts for the previous
+See the top-level [README](../README-rbpi4b.md). The device facts for the previous
 target are in [01 — Device survey](01-device-survey.md), the comparison of all
 four machines in [02 — Hardware](02-hardware.md), and the reuse/change plan in
 [03 — Port plan](03-port-plan.md).

@@ -88,3 +88,7 @@ __pycache__/
 
 # machine-local overrides (per unit, never committed)
 rb.local.conf
+
+# --- Pi 5 kit (pi5/, Makefile) ---------------------------------------------
+# this machine's Pi address and ssh key (pi.env.example is the shape)
+/pi.env
